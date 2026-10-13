@@ -1,0 +1,35 @@
+OpenGT4
+Copyright (C) 2026 OpenGT4 contributors
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation, version 3, with the additional terms below.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License in the
+file LICENSE for more details.
+
+The license covers the code in this repository only. It does not cover
+Gran Turismo 4 or any of its data, which are not part of this project.
+
+
+Additional terms (section 7 of the GNU General Public License, version 3)
+=========================================================================
+
+1. Attribution (section 7(b)). Any work that contains or is derived from
+   OpenGT4, in source or binary form, must keep the notice
+
+       Based on OpenGT4
+
+   (a link to the OpenGT4 project page may be added) in its Appropriate
+   Legal Notices: in its documentation, and, if the work has an interactive
+   user interface, in a place of that interface where users can see it,
+   such as an About, credits or launcher screen.
+
+2. Marking of modified versions (section 7(c)). A modified version must be
+   marked in reasonable ways as different from the original version and
+   must not be presented as the official OpenGT4.
+
+These terms are permitted by section 7 and apply to every copy of OpenGT4
+and to every work based on it.

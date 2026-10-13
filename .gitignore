@@ -1,0 +1,60 @@
+# Game content: never commit
+assets/*
+extracted/*
+!assets/.gitkeep
+!extracted/.gitkeep
+*.iso
+*.bin
+*.cue
+*.img
+*.elf
+*.irx
+*.rom
+*.cdvd
+*.pkg
+*.ecm
+*.chd
+*.7z
+*.zip
+*.rar
+
+# Build output
+build/
+build-release/
+dist/
+out/
+cmake-build-*/
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+
+# Tooling / editors
+.vscode/
+.idea/
+.vs/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+*.ghidra
+*.gpr
+*.rep/
+
+# Local Python env
+.venv/
+
+# splat output (disassembly of game code, never commit)
+splat/asm/
+splat/assets/
+splat/build/
+splat/*.ld
+splat/.splache
+splat/*.d
+splat/undefined_*_auto.txt
+!splat/linker_script_extra.ld
+
+# PCSX2 reference captures (game memory, never commit)
+captures/

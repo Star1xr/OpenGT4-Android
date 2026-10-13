@@ -1,0 +1,104 @@
+# splat config for GT4 NTSC-U SCUS-97328 v2.00, main executable (CORE.GT4).
+# Input: extracted/core.bin from tools/unpack_core.py (the user's own disc).
+# Started from `splat create_config` on extracted/core.elf, then edited.
+# Addresses and how they were confirmed: docs/analysis/CORE_FORMAT.md.
+#
+# Run from this folder:  ../.venv/Scripts/python -m splat split gt4.yaml
+# Output (asm/, assets/, build/, *.ld) is disassembly of game code: git-ignored.
+name: Gran Turismo 4 (NTSC-U 2.00) CORE
+sha1: 38cc7f0d7841d1b75e76ad3678efd813386f65ce  # of extracted/core.bin
+options:
+  basename: gt4
+  target_path: ../extracted/core.bin
+  elf_path: build/gt4.elf
+  base_path: .
+  platform: ps2
+  compiler: EEGCC
+
+  gp_value: 0x006DDDF0  # confirmed: header 0x128 and crt0 SetupThread
+
+  asm_path: asm
+  asset_path: assets
+  build_path: build
+
+  ld_script_path: gt4.ld
+  ld_dependencies: True
+  ld_wildcard_sections: True
+  ld_bss_contains_common: True
+
+  create_asm_dependencies: True
+
+  # One big text blob for now. Turn on once function boundaries are split.
+  find_file_boundaries: False
+
+  o_as_suffix: True
+
+  symbol_addrs_path:
+    - symbol_addrs.txt
+  reloc_addrs_path:
+    - reloc_addrs.txt
+
+  string_encoding: ASCII
+  data_string_encoding: ASCII
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  named_regs_for_c_funcs: False
+
+  section_order:
+    - .text
+    - .data
+    - .rodata
+    - .gcc_except_table
+    - .lit8
+    - .lit4
+    - .sdata
+    - .sbss
+    - .bss
+
+  auto_link_sections:
+    - .data
+    - .rodata
+    - .gcc_except_table
+    - .lit8
+    - .lit4
+    - .sdata
+    - .sbss
+    - .bss
+
+segments:
+  - name: core
+    type: code
+    start: 0x000000
+    vram: 0x00100000
+    bss_size: 0x1CC35C
+    subalign: null
+    subsegments:
+      # text record: 0x00100000-0x00617a14
+      - [0x000000, asm, core/text]
+      # .ctors 0x00616f24 (-1, 370 entries, 0) and .dtors 0x006174f4 (-1, 320 entries, 0),
+      # read by __do_global_ctors at 0x005bc4c8. .dtors ends at 0x006179fc = header word 0x10c.
+      - [0x516F24, data, core/ctors_dtors]
+      # data record: 0x00617a80-0x006d5dfc. Boundaries and evidence: docs/analysis/CORE_FORMAT.md "Data record".
+      # .data [hypothesis]: identified writes (lui + store pairs) land only in
+      # 0x00617a80-0x00659974. Indirect writes are not seen. Also holds the old-ABI
+      # vtables and the liberx export tables.
+      - [0x517A80, data, core/data]
+      # rt_ac.irx, IOP module embedded in .data. The EE loader computes exactly
+      # 0x0064ae80-0x0064b435 (func_00520758). Next variable starts at 0x0064b438.
+      - [0x54AE80, bin, core/rt_ac.irx]
+      - [0x54B438, data, core/data_2]
+      # .rodata [hypothesis, working layout]: 0x61 zero bytes end the liberx tables
+      # at 0x0068ba1e, first referenced string 0x0068baa8, all 370 lw+jr jump
+      # tables are >= 0x0068bb30. No $gp-relative access found, so no sdata/sbss
+      # subsegment is defined (provisional, not proof they are absent).
+      - [0x58BA80, rodata, core/rodata]
+      # .eh_frame 0x006d3e00-0x006d5bf0: 191 + 67 CIE/FDE records walked to their
+      # zero terminators, start is the argument to __register_frame_info.
+      - [0x5D3E00, bin, core/eh_frame]
+      # 0x006d5c00-0x006d5dfc: {start, end, handler} code triples ending in -1,
+      # gcc 2.9x exception table layout [provisional].
+      - [0x5D5C00, bin, core/except_table]
+      # bss: 0x006d5e00-0x008a215c (crt0 clear range)
+      - { type: bss, vram: 0x006D5E00, name: core/bss }
+  - [0x5D5DFC]

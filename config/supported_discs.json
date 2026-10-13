@@ -1,0 +1,31 @@
+{
+  "_comment": "Hashes of supported disc dumps. Hashes are not game content. Only add entries checked against a real dump and a public database (Redump / GT Modding Hub).",
+  "discs": [
+    {
+      "region": "NTSC-U",
+      "serial": "SCUS-97328",
+      "version": "2.00",
+      "size": 5314478080,
+      "crc32": "831f9f84",
+      "sha1": "7da11cc5c18d5ed4a7e882c6d1168d3afa6940c3",
+      "sha1_source": "computed locally from the user dump; not yet checked against Redump (CRC32 and size match GT Modding Hub)"
+    },
+    {
+      "region": "NTSC-U",
+      "serial": "SCUS-97328",
+      "version": "1.01",
+      "crc32": "d1d25931",
+      "sha1": ""
+    },
+    {
+      "region": "PAL",
+      "serial": "",
+      "sha1": ""
+    },
+    {
+      "region": "NTSC-J",
+      "serial": "",
+      "sha1": ""
+    }
+  ]
+}
