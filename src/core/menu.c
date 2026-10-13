@@ -4755,6 +4755,13 @@ int menu_enter_career_return(menu *m){
     }
     menu_enter(m,menu_active_root(m)<0?0:menu_active_root(m));return 1;
 }
+/* option.ad RaceRoot.reflect/apply L2092/L2106: index 0 AT, 1 MT,
+   automatic_gear = 1-index. GT Mode has no Arcade game.manual field;
+   003D6350 +18..20 reads the global gearbox option for the player. */
+int menu_driving_manual(menu *m)
+{
+    return menu_option_number(m,"automatic_gear",1)==0;
+}
 double menu_game_number(menu *m,const char *name,double fallback)
 {
     ah_val v;

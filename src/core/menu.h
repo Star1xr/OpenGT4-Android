@@ -56,6 +56,7 @@ int menu_take_gtmode_save_entry(menu *m);
 int menu_confirm(menu *m,const char *title,const char *message);
 void menu_options_storage(const char *path);
 double menu_option_number(menu *m,const char *name,double fallback);
+int menu_driving_manual(menu *m);
 void menu_pad_configuration(menu *m,int port,gt4_pad_config *out);
 const char *menu_option_text(menu *m,const char *name,const char *fallback); /* a string option, or fallback */
 const char *menu_game_text(menu *m,const char *name); /* main.game.<name> as a string, "" without one */

@@ -120,6 +120,7 @@ void race_game_set_replay_options(race_game *g, int display, int dive);
 /* the driving options of the next race_game_start: the tyres (the
    Arcade's index, -1 the car's own), the gearbox and the aids */
 void race_game_set_driving(race_game *g, int tire, int manual, int assist_asm, int assist_tcs);
+int race_game_set_transmission(race_game *g,int manual);
 /* The Arcade's QuickTune at Start (00111DC0): 1 when the built race must
    be rebuilt to take it. Cleared for a newly selected race (00111B50). */
 int race_game_quick_tune(race_game *g, int tuned, int power, int weight, int front, int rear,

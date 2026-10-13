@@ -1618,6 +1618,19 @@ void race_game_set_arcade_owned(race_game *g,const uint8_t *body)
 int race_game_split(const race_game *g){return g && g->split;}
 int race_game_take_retry(race_game *g){int pending=g && g->retry_requested;if(g)g->retry_requested=0;return pending;}
 
+/* 003D6350 +18..20 copies the option into the player controller.
+   The native pregrid is already prepared; report whether it needs a
+   rebuild, and retain this choice through prepared Retry. */
+int race_game_set_transmission(race_game *g,int manual)
+{
+    if(!g)return 0;
+    manual=manual!=0;
+    int previous=g->last_prepared?g->last_desc.manual:g->manual;
+    g->manual=manual;
+    if(g->last_prepared)g->last_desc.manual=manual;
+    return previous!=manual;
+}
+
 void race_game_set_driving(race_game *g, int tire, int manual, int assist_asm, int assist_tcs)
 {
     if (!g) return;

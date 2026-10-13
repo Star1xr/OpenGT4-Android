@@ -1782,7 +1782,7 @@ int main(int argc, char **argv)
                    then quick-mission (0011BF60) */
                 gt4_career_license_exam mission;char code[32],msg[256]="Cannot read mission request.";
                 int ok=menu_get_mission_request(mn,code) && gt4_career_mission_prepare(&mission,argv[1],gt4_game_race_lookup_data(),code,msg,sizeof msg);
-                if(ok){race_time_trial=0;free_mode=0;race_game_set_time_trial(game,0);mission.desc.manual=(int)menu_game_number(mn,"manual",0);ok=race_game_start_prepared(game,&mission.desc,msg,sizeof msg);}
+                if(ok){race_time_trial=0;free_mode=0;race_game_set_time_trial(game,0);mission.desc.manual=menu_driving_manual(mn);ok=race_game_start_prepared(game,&mission.desc,msg,sizeof msg);}
                 if(ok){menu_quick_race q;ok=race_game_quick_grid(game,&q);
                     if(ok){
                         career_license.active=0;career_race.active=1;career_race.mission=1;career_race.championship=0;
@@ -1799,7 +1799,7 @@ int main(int argc, char **argv)
             }else if(proj==1 && menu_race_is_license(mn)){
                 gt4_career_license_exam exam;char code[32],msg[256]="Cannot read licence request.";
                 int ok=menu_get_license_request(mn,code) && gt4_career_license_prepare(&exam,argv[1],gt4_game_race_lookup_data(),code,msg,sizeof msg);
-                if(ok){race_time_trial=0;free_mode=0;race_game_set_time_trial(game,0);exam.desc.manual=(int)menu_game_number(mn,"manual",0);ok=race_game_start_prepared(game,&exam.desc,msg,sizeof msg);}
+                if(ok){race_time_trial=0;free_mode=0;race_game_set_time_trial(game,0);exam.desc.manual=menu_driving_manual(mn);ok=race_game_start_prepared(game,&exam.desc,msg,sizeof msg);}
                 if(ok){menu_quick_race q;ok=race_game_quick_grid(game,&q) && menu_license_begin(mn,code,&career_license.visit);
                     if(ok){
                         career_race.active=0;career_license.active=1;career_license.result_applied=0;snprintf(career_license.code,sizeof career_license.code,"%s",code);
@@ -1830,7 +1830,7 @@ int main(int argc, char **argv)
                     else ok=gt4_career_event_prepare(&event,argv[1],gt4_game_race_lookup_data(),event_label,request.player_body,request.championship,&career_race.rng,msg,sizeof msg);}
                 if(ok){
                     race_time_trial=0;free_mode=0;race_game_set_time_trial(game,0);
-                    event.desc.manual=(int)menu_game_number(mn,"manual",0);
+                    event.desc.manual=menu_driving_manual(mn);
                     ok=race_game_start_prepared(game,&event.desc,msg,sizeof msg);
                     /* 00114250 +F4 / 00119918 +174: licence availability
                        becomes options+970, read by the pit menu 003C12A8. */
@@ -1923,7 +1923,7 @@ int main(int argc, char **argv)
                 race_game_set_unit(game,strcmp(menu_option_text(mn,"unit_velocity","MPH"),"KMPH")?1:0);
                 race_game_set_power_unit(game,menu_option_text(mn,"unit_power","HP"));
                 /* the driving options' apply_setting: game.manual, assist_asm, assist_tcs, tire_idx */
-                race_game_set_driving(game,tire,(int)menu_game_number(mn,"manual",0),
+                race_game_set_driving(game,tire,proj==1?menu_driving_manual(mn):(int)menu_game_number(mn,"manual",0),
                     (int)menu_game_number(mn,"assist_asm",menu_option_number(mn,"assist_asm",1)),
                     (int)menu_game_number(mn,"assist_tcs",menu_option_number(mn,"assist_tcs",1)));
                 race_game_quick_clear(game);   /* 00111B50: a new race, no QuickTune */
@@ -1942,7 +1942,7 @@ int main(int argc, char **argv)
                         snprintf(photo.desc.course,sizeof photo.desc.course,"%s",race_course);
                         photo.desc.owned_car[0]=photo.player_body;photo.desc.event_row=photo.race_row;
                         photo.desc.event_rng=&career_race.rng;
-                        photo.desc.manual=(int)menu_game_number(mn,"manual",0);
+                        photo.desc.manual=menu_driving_manual(mn);
                         photo.desc.assist_asm=(int)menu_game_number(mn,"assist_asm",0);
                         photo.desc.assist_tcs=(int)menu_game_number(mn,"assist_tcs",0);
                         started=race_game_start_prepared(game,&photo.desc,msg,sizeof msg);
@@ -2035,6 +2035,10 @@ int main(int argc, char **argv)
                        player's entry; the race built for the grid is rebuilt
                        to take it (the PS2 writes the live entry before its
                        cars start) */
+                    /* 003D6350 reads the current option on GT Start;
+                       Options may have changed it after the grid loaded. */
+                    if((career_race.active || career_license.active || free_mode) &&
+                       race_game_set_transmission(game,menu_driving_manual(mn)))rebuild=1;
                     menu_quick_tune_values tune;
                     if(!career_race.active && !career_license.active && game && race_car[0] && menu_quick_tune(mn,&tune) &&
                        race_game_quick_tune(game,tune.tuned,tune.power,tune.weight,tune.front_tire,tune.rear_tire,tune.gear,tune.transmission,tune.assist) &&
@@ -2068,7 +2072,7 @@ int main(int argc, char **argv)
                            visit before constructing the next examination. */
                         menu_save_capture(mn);menu_save_refresh(cache[1]);
                         int ok=gt4_career_license_prepare(&exam,argv[1],gt4_game_race_lookup_data(),next,msg,sizeof msg);
-                        if(ok){exam.desc.manual=(int)menu_game_number(cache[1],"manual",0);ok=race_game_start_prepared(game,&exam.desc,msg,sizeof msg);}
+                        if(ok){exam.desc.manual=menu_driving_manual(cache[1]);ok=race_game_start_prepared(game,&exam.desc,msg,sizeof msg);}
                         menu_quick_race q;
                         if(ok)ok=race_game_quick_grid(game,&q);
                         if(ok)ok=menu_license_leave(cache[1],career_license.code,&career_license.visit);
@@ -2094,7 +2098,7 @@ int main(int argc, char **argv)
                     if(ok)ok=menu_get_career_request(cache[1],&equipped,msg,sizeof msg);
                     if(ok){memcpy(career_race.bodies[0],equipped.player_body,0x4b8);
                         ok=gt4_career_championship_round(&next,argv[1],gt4_game_race_lookup_data(),label,&career_race.championship_grid,msg,sizeof msg);}
-                    if(ok)ok=race_game_start_prepared(game,&next.desc,msg,sizeof msg);
+                    if(ok){next.desc.manual=menu_driving_manual(mn);ok=race_game_start_prepared(game,&next.desc,msg,sizeof msg);}
                     if(ok)race_game_set_pit_mode_change(game,menu_career_aspec_available(cache[1],label));
                     if(ok){menu_quick_race q;ok=race_game_quick_grid(game,&q);if(ok){
                         career_race.round++;career_race.result_applied=0;career_race.award=0;career_race.grand_prize=0;
