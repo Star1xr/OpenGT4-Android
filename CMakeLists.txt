@@ -175,6 +175,17 @@ if(OPENGT4_LIBS_ONLY)
   return()
 endif()
 
+# The game core and the physics reference each other: the race code in the core
+# calls line and race-over helpers that live in the physics library, and the
+# physics calls back into the core. MSVC resolves symbols regardless of order,
+# but GNU ld walks each static archive once, in order, so the two archives
+# travel in one group the linker rescans until nothing is left undefined.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24 AND NOT MSVC)
+  add_library(opengt4_game_libs INTERFACE)
+  target_link_libraries(opengt4_game_libs INTERFACE "$<LINK_GROUP:RESCAN,opengt4_core,opengt4_physics>")
+  link_libraries(opengt4_game_libs)
+endif()
+
 # Command-line tools built on the port's own code.
 add_executable(gt4vol tools/c/gt4vol.c)
 target_link_libraries(gt4vol PRIVATE opengt4_core opengt4_platform_common)
