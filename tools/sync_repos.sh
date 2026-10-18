@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# OpenGT4 Android - iki repoyu ayni commit ile guncel tutar.
+# OpenGT4 Android - keep two repositories on the same commit.
 #
-#   private : Star1xr/opengt4privaterepo   (CI build'leri, private-assets branch'i)
-#   public  : Star1xr/OpenGT4-Android      (ayni commit'ler, ozel assetler olmadan)
+#   private : Star1xr/opengt4privaterepo   (builds, private-assets branch)
+#   public  : Star1xr/OpenGT4-Android      (same commits, without private assets)
 #
-# Kullanim:
-#   tools/sync_repos.sh --setup                 # remote'lari tanimlar (token yazmaz)
-#   GITHUB_TOKEN=xxx tools/sync_repos.sh        # main'i iki repoya da push eder
+# Usage:
+#   tools/sync_repos.sh --setup                 # create the remotes (no token stored)
+#   GITHUB_TOKEN=xxx tools/sync_repos.sh        # push main to both repositories
 #   GITHUB_TOKEN=xxx tools/sync_repos.sh --only private
 #   GITHUB_TOKEN=xxx tools/sync_repos.sh --tag v0.3.0-android.1
 #
-# Token asla dosyaya/remote URL'ine yazilmaz: tek kullanimlik http.extraheader.
+# The token is never written to a file or into a remote URL: it is used once as
+# an http.extraheader on the push command line.
 set -euo pipefail
 
 PRIVATE_REPO="Star1xr/opengt4privaterepo"
@@ -28,7 +29,7 @@ while [ $# -gt 0 ]; do
         --only) shift; ONLY="${1:-}" ;;
         --tag) shift; TAG="${1:-}" ;;
         -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
-        *) echo "bilinmeyen arguman: $1" >&2; exit 2 ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
 done
@@ -40,7 +41,7 @@ setup_remotes() {
         git remote set-url "$PRIVATE_REMOTE" "https://github.com/${PRIVATE_REPO}.git"
     git remote add "$PUBLIC_REMOTE" "https://github.com/${PUBLIC_REPO}.git" 2>/dev/null || \
         git remote set-url "$PUBLIC_REMOTE" "https://github.com/${PUBLIC_REPO}.git"
-    echo "remote'lar hazir:"
+    echo "remotes ready:"
     git remote -v | grep -E "^(${PRIVATE_REMOTE}|${PUBLIC_REMOTE})\b"
 }
 
@@ -49,23 +50,23 @@ if [ "$SETUP" = "1" ]; then
     exit 0
 fi
 
-# --- Yerel (push edilmeyecek) dosyalar ve oyun verisi asla git'e girmez -------
+# --- Local-only files and game data must never reach the repositories --------
 leak_guard() {
     local bad
     bad="$(git ls-files | grep -E '(^|/)(AGENTS\.md|opengt4-android-plan\.md)$|^\.opencode/' || true)"
     if [ -n "$bad" ]; then
-        echo "HATA: yerel dosyalar takip ediliyor (push edilmez):" >&2
+        echo "ERROR: local-only files are tracked (they must not be pushed):" >&2
         echo "$bad" >&2
         exit 1
     fi
     bad="$(git status --porcelain | awk '{print $NF}' | grep -E '\.(iso|bin|chd|cue|img|jks|keystore|pem)$' || true)"
     if [ -n "$bad" ]; then
-        echo "HATA: oyun verisi/anahtar staged gorunuyor:" >&2
+        echo "ERROR: game data or keys appear to be staged:" >&2
         echo "$bad" >&2
         exit 1
     fi
     if git grep -qE 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' -- . ':!tools/sync_repos.sh' 2>/dev/null; then
-        echo "HATA: commit iceriginde token benzeri dizi var." >&2
+        echo "ERROR: a token-like string is present in the committed content." >&2
         exit 1
     fi
 }
@@ -81,7 +82,7 @@ push_one() {
 }
 
 if [ -z "${GITHUB_TOKEN:-}" ]; then
-    echo "GITHUB_TOKEN tanimli degil. Ornek:" >&2
+    echo "GITHUB_TOKEN is not set. For example:" >&2
     echo "  GITHUB_TOKEN=xxx tools/sync_repos.sh" >&2
     exit 2
 fi
@@ -89,14 +90,14 @@ fi
 leak_guard
 setup_remotes
 
-# basic x-access-token:<token>  - GitHub smart HTTP'nin bekledigi bicim
+# basic x-access-token:<token> - the form GitHub's smart HTTP expects
 AUTH_HEADER="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
 
 case "$ONLY" in
     private) push_one "$PRIVATE_REMOTE" ;;
     public)  push_one "$PUBLIC_REMOTE" ;;
     "")      push_one "$PRIVATE_REMOTE"; push_one "$PUBLIC_REMOTE" ;;
-    *)       echo "bilinmeyen --only degeri: $ONLY" >&2; exit 2 ;;
+    *)       echo "unknown --only value: $ONLY" >&2; exit 2 ;;
 esac
 
-echo "tamam: ${BRANCH}${TAG:+ + tag ${TAG}} gonderildi."
+echo "done: ${BRANCH}${TAG:+ + tag ${TAG}} pushed."

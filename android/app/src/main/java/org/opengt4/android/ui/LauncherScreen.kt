@@ -29,8 +29,9 @@ import org.opengt4.android.R
 import java.util.Locale
 
 /**
- * Faz 1 launcher: disc sec, dogrula, oynat. Video/ses/pad ayarlari (Faz 5)
- * ayni INI dosyalarini kullanacak (src/app/launcher_config.c).
+ * Phase 1 launcher: select a disc, validate it, play. Video/audio/pad options
+ * (phase 5) reuse the same INI files as the PC launcher
+ * (src/app/launcher_config.c).
  */
 @Composable
 fun LauncherScreen(

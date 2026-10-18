@@ -1,12 +1,13 @@
 /*
- * Android video: SDL2 penceresi + EGL/GLES baglami.
+ * Android video: SDL2 window plus the EGL/GLES context.
  *
- * Faz 1: baglam kurulumu, ES 3.2 kapi kontrolu, temizle/sun.
- * Faz 3: 2B yigili cizim ve 3B sahne buraya gelecek; paylasilan GL kaynagi
- *        src/platform/gl/* altinda olacak. Bu dosyada KASITLI olarak eksik
- *        birakilan semboller (plat_draw_*, plat_texture_*, plat_set_clip...)
- *        Faz 3'te eklenecek: linker hatasi versin, sessiz siyah ekran olmasin.
- * FSR/upscale yolu yoktur (saf port, AGENTS.md karari): desc->upscale yok sayilir.
+ * Phase 1: context setup, the ES 3.2 gate, clear and present.
+ * Phase 3: the batched 2D renderer and the 3D scene move here, sharing one copy
+ *          of the GL sources under src/platform/gl/. The symbols that are
+ *          intentionally missing here (plat_draw_*, plat_texture_*, ...) are
+ *          added in phase 3 so that the linker fails loudly instead of leaving
+ *          a silent black screen.
+ * There is no FSR/upscale path (pure port): desc->upscale is ignored.
  */
 #include "platform/platform.h"
 #include "android_platform.h"
@@ -34,7 +35,7 @@ static const char *glstr(GLenum name)
 
 static int create_window(void)
 {
-    /* Android'de boyut tam ekrandan gelir; masaustu pencere boyutu sadece ipucu. */
+    /* Android takes the size from the display; the window size is only a hint. */
     int w = view_w > 0 ? (int)view_w : 1280, h = view_h > 0 ? (int)view_h : 720;
     SDL_DisplayMode mode;
     if (SDL_GetCurrentDisplayMode(0, &mode) == 0 && mode.w > 0 && mode.h > 0) {
@@ -57,7 +58,7 @@ static SDL_GLContext create_context(int major, int minor)
 int plat_video_init(const plat_video_desc *desc)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
-        ALOGE("SDL_Init basarisiz: %s", SDL_GetError());
+        ALOGE("SDL_Init failed: %s", SDL_GetError());
         return -1;
     }
     if (desc && desc->width > 0 && desc->height > 0) {
@@ -68,17 +69,18 @@ int plat_video_init(const plat_video_desc *desc)
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     if (!create_window()) {
-        ALOGE("pencere acilamadi: %s", SDL_GetError());
+        ALOGE("window creation failed: %s", SDL_GetError());
         return -1;
     }
 
-    /* Kapi: ES 3.2 istenir; surucu veremezse ES 3.0 + uyari (AGENTS.md). */
+    /* Gate: ask for ES 3.2, fall back to ES 3.0 with a warning if the driver
+       cannot provide it. */
     context = create_context(3, 2);
     if (context) {
         es_major = 3;
         es_minor = 2;
     } else {
-        ALOGW("GLES 3.2 baglami kurulamadi (%s); ES 3.0 fallback", SDL_GetError());
+        ALOGW("GLES 3.2 context unavailable (%s); falling back to ES 3.0", SDL_GetError());
         context = create_context(3, 0);
         if (context) {
             es_major = 3;
@@ -86,7 +88,7 @@ int plat_video_init(const plat_video_desc *desc)
         }
     }
     if (!context) {
-        ALOGE("GLES baglami kurulamadi (ES 3.0 da yok): %s", SDL_GetError());
+        ALOGE("no GLES context at all (ES 3.0 failed too): %s", SDL_GetError());
         return -1;
     }
     if (SDL_GL_MakeCurrent(window, context) != 0) {
@@ -94,7 +96,8 @@ int plat_video_init(const plat_video_desc *desc)
         return -1;
     }
 
-    /* Surucu istenenden farkli bir surum verdiyse gercegini olc. */
+    /* A driver may hand out a different version than the one requested: measure
+       what is actually current. */
     GLint major = 0, minor = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &major);
     glGetIntegerv(GL_MINOR_VERSION, &minor);
@@ -104,17 +107,17 @@ int plat_video_init(const plat_video_desc *desc)
     }
     es32 = es_major > 3 || (es_major == 3 && es_minor >= 2);
     if (!es32)
-        ALOGW("gercek baglam ES %d.%d: noperspective yok, smooth ile devam edilecek", es_major, es_minor);
+        ALOGW("current context is ES %d.%d: no noperspective, smooth will be used", es_major, es_minor);
 
     const int nv_nopersp = SDL_GL_ExtensionSupported("GL_NV_shader_noperspective_interpolation");
     snprintf(gl_info, sizeof gl_info, "ES %d.%d | %s | %s | noperspective:%s",
              es_major, es_minor, glstr(GL_VENDOR), glstr(GL_RENDERER), nv_nopersp ? "NV" : "smooth");
     ALOGI("GLES %d.%d | GLSL %s", es_major, es_minor, glstr(GL_SHADING_LANGUAGE_VERSION));
     ALOGI("vendor=%s renderer=%s", glstr(GL_VENDOR), glstr(GL_RENDERER));
-    ALOGI("noperspective interpolation: %s", nv_nopersp ? "NV uzantisi" : "yok (smooth kullanilacak)");
+    ALOGI("noperspective interpolation: %s", nv_nopersp ? "NV extension" : "unavailable (smooth)");
 
     SDL_GL_SetSwapInterval(desc && desc->vsync ? 1 : 0);
-    (void)desc->upscale; /* FSR yok: Android'de her zaman native */
+    (void)(desc ? desc->upscale : 0); /* no FSR: Android always renders native */
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glClearColor(0.06f, 0.07f, 0.09f, 1.0f);

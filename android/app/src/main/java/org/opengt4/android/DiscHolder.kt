@@ -9,19 +9,20 @@ import org.opengt4.android.bridge.NativeBridge
 import java.io.FileNotFoundException
 
 /**
- * Secilen disc'i tutar: SAF'in verdigi fd surec yasadikca acik kalir, oyun
- * `/proc/self/fd/<n>` yolunu dogrudan okur. Kopya/cikarma yok (docs/ANDROID.md).
+ * Holds the selected disc: the fd handed out by SAF stays open for the process
+ * lifetime and the game reads /proc/self/fd/<n> directly. No copy, no extraction
+ * (see docs/ANDROID.md).
  *
- * `/proc/self/fd/<n>` kernel tarafindan ayni dentry ile yeniden acilir; yol
- * izni gerekmez, dosya icin tekrar izin sorulmaz. Saglayici aranabilir fd
- * vermezse (bulut saglayicilari pipe doner) acik hata verilir.
+ * The kernel reopens that path against the same dentry, so no path permission is
+ * required. Providers that hand out a non-seekable fd (cloud providers usually
+ * return a pipe) are rejected with a clear error.
  */
 object DiscHolder {
 
     private const val prefsName = "opengt4_launcher"
     private const val keyUri = "disc_uri"
 
-    /** Bir GT4 diski en az bu kadar bayt olmali (yanlis dosya secimini eler). */
+    /** A GT4 disc image is at least this large; filters out accidental picks. */
     private const val minBytes = 100L * 1024L * 1024L
 
     private var descriptor: ParcelFileDescriptor? = null
@@ -31,13 +32,13 @@ object DiscHolder {
     var bytes: Long = -1L
         private set
 
-    /** null basarili; aksi halde strings.xml'deki hata anahtari. */
+    /** null on success, otherwise an error key from strings.xml. */
     var error: String? = null
         private set
 
     val ready: Boolean get() = descriptor != null
 
-    /** Oyunun `argv[1]` olarak alacagi yol. */
+    /** The path handed to the game as `argv[1]`. */
     fun procPath(): String? = descriptor?.let { "/proc/self/fd/${it.fd}" }
 
     fun savedUri(ctx: Context): String? = prefs(ctx).getString(keyUri, null)
@@ -50,7 +51,8 @@ object DiscHolder {
                     uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (ignored: SecurityException) {
-                // Bazi saglayicilar kalici izin vermez; oturum boyunca yine calisir.
+                // Some providers do not grant a persistent permission; the disc
+                // still works for this session.
             }
         }
         val opened = try {
@@ -83,7 +85,7 @@ object DiscHolder {
         return true
     }
 
-    /** Kayitli disc'i tekrar acar (kalici izin varsa yeniden baslar). */
+    /** Reopens the saved disc (works again as long as the permission persists). */
     fun reopenSaved(ctx: Context): Boolean {
         val saved = savedUri(ctx) ?: return false
         return open(ctx, Uri.parse(saved), persistable = false)

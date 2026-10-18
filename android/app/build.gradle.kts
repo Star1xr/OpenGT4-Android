@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Native tarafi bu surumle ayni kalir (CMake'e gecirilir, logcat banner'i icin).
+// The native side reports the same version (passed to CMake, used for logcat).
 val openGt4Version = "0.3.0-alpha.1"
 
 android {
@@ -18,7 +18,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = openGt4Version
-        // Yalnizca 64-bit ARM (AGENTS.md karari).
+        // 64-bit ARM only.
         ndk {
             abiFilters += "arm64-v8a"
         }

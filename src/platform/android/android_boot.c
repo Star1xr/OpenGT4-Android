@@ -1,12 +1,13 @@
 /*
- * Faz 1 boot ikilisi (GECICI).
+ * Phase 1 boot binary (temporary).
  *
- * Amac: SDL2 + EGL/GLES 3.2 + SAF fd zincirinin uctan uca calistigini cihazda
- * kanitlamak. Faz 3'te yerini gercek oyuna birakir: bu dosya silinir, ayni
- * hedefi src/app/main.c + paylasilan GLES render yolu alir.
+ * Purpose: prove on real hardware that SDL2 + EGL/GLES 3.2 + the SAF disc path
+ * work end to end. Phase 3 replaces it with the real game: this file is deleted
+ * and the same target is built from src/app/main.c plus the shared GLES render
+ * path.
  *
- * main() SDL tarafindan SDL_main'e yeniden adlandirilir (SDL_main.h); SDLActivity
- * bu sembolu libopengt4.so icinden cagirir ve main donunce Activity kapanir.
+ * SDL renames main() to SDL_main (SDL_main.h); SDLActivity calls that symbol
+ * inside libopengt4.so and finishes the Activity when it returns.
  */
 #include "platform/platform.h"
 #include "android_platform.h"
@@ -23,12 +24,12 @@
 static void report_disc(const char *path)
 {
     if (!path || !*path) {
-        ALOGW("disc yolu bos: launcher'dan iso secilmedi");
+        ALOGW("no disc path given: nothing was selected in the launcher");
         return;
     }
     plat_file *file = plat_file_open(path);
     if (!file) {
-        ALOGE("disc acilamadi: %s", path);
+        ALOGE("cannot open the disc: %s", path);
         return;
     }
     uint64_t size = plat_file_size(file);
@@ -36,11 +37,11 @@ static void report_disc(const char *path)
     size_t got = plat_file_read_at(file, 0, head, sizeof head);
     plat_file_close(file);
 
-    ALOGI("disc: %s (%llu bayt, ilk okuma %zu bayt)", path, (unsigned long long)size, got);
+    ALOGI("disc: %s (%llu bytes, first read %zu bytes)", path, (unsigned long long)size, got);
     if (size == GT4_V200_BYTES)
-        ALOGI("disc boyutu v2.00 ile uyumlu");
+        ALOGI("disc size matches v2.00");
     else
-        ALOGW("disc boyutu v2.00'dan farkli: %llu != %llu",
+        ALOGW("disc size differs from v2.00: %llu != %llu",
               (unsigned long long)size, (unsigned long long)GT4_V200_BYTES);
 }
 
@@ -51,20 +52,20 @@ int main(int argc, char **argv)
 
     const char *disc = argc > 1 ? argv[1] : NULL;
     for (int i = 2; i + 1 < argc; i++)
-        if (!strcmp(argv[i], "--save-dir")) ALOGI("save dizini: %s", argv[i + 1]);
+        if (!strcmp(argv[i], "--save-dir")) ALOGI("save directory: %s", argv[i + 1]);
 
     report_disc(disc);
 
-    plat_video_desc desc = { 640, 448, 1, 1, 0 }; /* upscale 0: Android'de FSR yok */
+    plat_video_desc desc = { 640, 448, 1, 1, 0 }; /* upscale 0: no FSR on Android */
     if (plat_video_init(&desc) != 0) {
-        ALOGE("video baslatilamadi");
+        ALOGE("video init failed");
         return 1;
     }
     ALOGI("gl info: %s", plat_android_gl_info());
-    ALOGI("ES 3.2 baglami: %s", plat_android_es32() ? "evet" : "hayir (3.0 fallback)");
+    ALOGI("ES 3.2 context: %s", plat_android_es32() ? "yes" : "no (ES 3.0 fallback)");
     plat_video_set_view(640.0f, 448.0f);
 
-    /* 3 saniyelik olcum: swap zinciri ve baglam gercekten akiyor mu? */
+    /* Three seconds of measurement: is the swap chain really running? */
     uint64_t start = plat_time_ns();
     int frames = 0;
     while (plat_time_ns() - start < (uint64_t)BOOT_PROBE_MS * 1000000ULL && !plat_should_quit()) {
@@ -74,10 +75,10 @@ int main(int argc, char **argv)
         frames++;
     }
     double seconds = (double)(plat_time_ns() - start) / 1e9;
-    ALOGI("olcum: %d kare / %.2f s (%.1f fps)", frames, seconds, seconds > 0 ? frames / seconds : 0.0);
-    ALOGI("Faz 1 dogrulandi: SDL2 + GLES + SAF fd yolu calisiyor");
+    ALOGI("measured: %d frames / %.2f s (%.1f fps)", frames, seconds, seconds > 0 ? frames / seconds : 0.0);
+    ALOGI("phase 1 verified: SDL2 + GLES + SAF disc path are working");
 
     plat_video_shutdown();
-    ALOGW("Faz 1 boot ikilisi: gercek oyun henuz baglanmadi (Faz 3); uygulama kapaniyor");
+    ALOGW("phase 1 boot binary: the real game is not wired up yet (phase 3); closing");
     return 0;
 }

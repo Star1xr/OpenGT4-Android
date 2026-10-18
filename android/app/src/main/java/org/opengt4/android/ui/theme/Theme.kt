@@ -5,7 +5,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Launcher her zaman koyu: oyun da koyu bir arayuzle baslar.
+// The launcher is always dark: the game also starts with a dark interface.
 private val OpenGt4Colors = darkColorScheme(
     primary = Color(0xFF3FA9F5),
     onPrimary = Color(0xFF062033),

@@ -4,11 +4,12 @@ import org.libsdl.app.SDLActivity
 import java.io.File
 
 /**
- * Oyunun kendisi: SDLActivity + yerel `libopengt4.so`.
+ * The game itself: SDLActivity plus the native `libopengt4.so`.
  *
- * Son kutuphane SDL'e gore "main" kutuphanesidir; SDL::SDL_main oradan cagrilir.
- * Argumanlar oyunun PC CLI sozlesmesiyle aynidir (bkz. src/app/main.c):
- *   argv[1] = ISO (SAF fd uzerinden /proc/self/fd/<n>), --save-dir, --config-file
+ * SDL treats the last library from getLibraries() as the entry point library and
+ * calls SDL_main inside it. The arguments follow the PC CLI contract of the game
+ * (see src/app/main.c):
+ *   argv[1] = ISO (via the SAF fd, /proc/self/fd/<n>), --save-dir, --config-file
  */
 class GameActivity : SDLActivity() {
 

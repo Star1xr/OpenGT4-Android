@@ -1,8 +1,9 @@
 /*
- * Android backend'in ic yuzu.
+ * Internal surface of the Android backend.
  *
- * Oyun kodu (src/core) bu basligi gormez; yalnizca include/platform/platform.h
- * kullanir. Buradakiler src/platform/android/* arasinda paylasilir.
+ * Game code (src/core) never sees this header; it only uses
+ * include/platform/platform.h. Everything here is shared between the files in
+ * src/platform/android/.
  */
 #ifndef OPENGT4_ANDROID_PLATFORM_H
 #define OPENGT4_ANDROID_PLATFORM_H
@@ -20,20 +21,21 @@
 #define ALOGW(...) __android_log_print(ANDROID_LOG_WARN, OPENGT4_ANDROID_LOG_TAG, __VA_ARGS__)
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, OPENGT4_ANDROID_LOG_TAG, __VA_ARGS__)
 
-/* "OpenGT4 Android <surum> (based on OpenGT4, unofficial)" - GPLv3 + NOTICE §7. */
+/* "OpenGT4 Android <version> (based on OpenGT4, unofficial)" - GPLv3 + NOTICE §7. */
 const char *plat_android_banner(void);
 
 /* ---- video (android_video.c) ---- */
-/* Baglamdan sonra gercek GLES surumu. 0: baglam yok. */
+/* Real GLES version after the context was created; 0 when there is no context. */
 int plat_android_es_major(void);
 int plat_android_es_minor(void);
-/* Launcher/JNI icin tek satirlik surucu ozeti (bossiz degil: baglam yok demek). */
+/* One-line driver summary for the launcher/JNI; empty means "no context". */
 const char *plat_android_gl_info(void);
-/* Gercek ES 3.2 baglami kuruldu mu? 0 ise 3.0 fallback (uyari loglanmistir). */
+/* Non-zero when a real ES 3.2 context is current; 0 means the ES 3.0 fallback
+   was used (a warning was logged). */
 int plat_android_es32(void);
 
-/* ---- fayda ---- */
-/* fd aranabilir mi (seek) ve boyutu; basarida 1. */
+/* ---- helpers ---- */
+/* Is the fd seekable and how large is it? Returns 1 on success. */
 int plat_android_fd_probe(int fd, uint64_t *size);
 
 #endif /* OPENGT4_ANDROID_PLATFORM_H */

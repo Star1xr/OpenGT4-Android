@@ -1,9 +1,9 @@
 package org.opengt4.android.bridge
 
 /**
- * Yerel kutuphane kopru'su (src/platform/android/android_jni.c).
+ * Bridge to the native library (src/platform/android/android_jni.c).
  *
- * libSDL2 once yuklenir: libopengt4.so'nun DT_NEEDED kaydi boylece cozulur.
+ * libSDL2 is loaded first so that libopengt4.so's DT_NEEDED entry resolves.
  */
 object NativeBridge {
 
@@ -12,18 +12,18 @@ object NativeBridge {
         System.loadLibrary("opengt4")
     }
 
-    /** Uygulama banner'i: "OpenGT4 Android <surum> (based on OpenGT4, unofficial)". */
+    /** Application banner: "OpenGT4 Android <version> (based on OpenGT4, unofficial)". */
     external fun nativeVersion(): String
 
     /**
-     * Disc fd sondasi: fd aranabilir mi ve boyutu ne?
+     * Probes a disc fd: is it seekable and how large is the file?
      *
-     * @param fd  SAF'in verdigi ham dosya tanimlayicisi (surec yasadikca acik kalmali)
-     * @param out out[0] = 1 aranabilir, out[1] = bayt cinsinden boyut
-     * @return 1 basarili, 0 hata
+     * @param fd  raw fd handed out by SAF (must stay open for the process lifetime)
+     * @param out out[0] = 1 when seekable, out[1] = size in bytes
+     * @return 1 on success, 0 on failure
      */
     external fun nativeDiscProbe(fd: Int, out: LongArray): Int
 
-    /** Cihazin GLES surumunu dondurur (baglam yoksa bos). */
+    /** GLES driver summary of this device; empty until a context exists. */
     external fun nativeGlInfo(): String
 }

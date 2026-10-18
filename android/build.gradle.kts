@@ -1,4 +1,4 @@
-// OpenGT4 Android - kok build dosyasi. Surumler gradle/libs.versions.toml'da.
+// OpenGT4 Android - root build file. Versions live in gradle/libs.versions.toml.
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.android) apply false

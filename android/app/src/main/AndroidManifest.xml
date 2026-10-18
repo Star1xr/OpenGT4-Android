@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  OpenGT4 Android - resmi OpenGT4 degildir, "Based on OpenGT4" (GPLv3 + NOTICE §7).
-  Oyun verisi icermez; kullanici kendi disc'ini secer.
+  OpenGT4 Android - unofficial, "Based on OpenGT4" (GPLv3 + NOTICE section 7).
+  Contains no game data; the user selects their own disc image.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- ES 3.0 taban; 3.2 tercih edilir, yoksa uyari ile 3.0'a dusulur. -->
+    <!-- ES 3.0 baseline; 3.2 is preferred and we fall back with a warning. -->
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
-    <!-- Dokunmatik pad geri bildirimi (opsiyonel; yoksa sessiz calisir). -->
+    <!-- Touch pad haptics are optional; without a vibrator they stay silent. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application

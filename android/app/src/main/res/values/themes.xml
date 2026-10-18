@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Compose kendi temalarini cizer; Activity yalnizca cerceve saglar.
-         Material Components bagimliligi eklememek icin platform temasi kullanilir. -->
+    <!-- Compose draws its own theme; the Activity only provides the window.
+         A platform theme keeps the Material Components dependency out. -->
     <style name="Theme.OpenGT4" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/launcher_background</item>
         <item name="android:statusBarColor">@color/launcher_background</item>

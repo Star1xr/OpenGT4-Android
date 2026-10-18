@@ -1,134 +1,163 @@
 # OpenGT4 — Android (ARM64)
 
-Bu dizin, OpenGT4'nin **Android portunu** anlatır. Port resmi OpenGT4 değildir:
-GPLv3 §7 kapsamında **değiştirilmiş sürüm** olarak işaretlenir ve her yerde
-"**Based on OpenGT4**" atfı korunur (bkz. [Lisans](#lisans)).
+This document describes the Android port of OpenGT4. The port is **not** the
+official OpenGT4 release: under GPLv3 §7 it is marked as a modified version and
+keeps the **"Based on OpenGT4"** attribution in the docs and in the UI (see
+[Licensing](#7-licensing)).
 
-- **Hedef:** arm64-v8a, `minSdk 26`, OpenGL ES 3.2 (yoksa ES 3.0 fallback + uyarı)
-- **Disc:** kullanıcının kendi Gran Turismo 4 disc'i; **yerinde okunur**, kopyalanmaz/açılmaz
-- **Yasak:** FSR/upscale (saf port), oyun verisi (ISO/dump/BIOS/asset/save) repoda bulunmaz
+- **Target:** arm64-v8a, `minSdk 26`, OpenGL ES 3.2 (ES 3.0 fallback with a warning)
+- **Disc:** the user's own Gran Turismo 4 disc, read **in place**; never copied or extracted
+- **Not part of this build:** FSR/upscaling (pure port) and any game data
+  (ISO, dump, BIOS, asset, save file)
 
 ---
 
-## 1. Durum
+## 1. Status
 
-| Faz | İş | Durum |
+| Phase | Work | State |
 |---|---|---|
-| 0 | Depo/doküman/lisans temizliği, senkron script'i | ✅ |
-| 1 | Gradle + Compose iskeleti, JNI köprüsü, GLES 3.2 boot doğrulaması | ✅ |
-| 2 | Giriş/çıkış: SAF ile ISO (fd sondası hazır), save dizini, config/INI köprüsü | 🚧 |
-| 3 | GLES 3.2 render yolu (`render3d`, `showroom`, `race_view`, shader prologu) | ⏳ |
-| 4 | Dokunmatik PS2 kontrolleri (GLES overlay → `plat_pad_state`) | ⏳ |
-| 5 | Launcher olgunlaştırma (video/denetim ayarları, doğrulama, ön bellek) | ⏳ |
-| 6 | Gömülü FFmpeg (LGPL, yalnız MPEG-2) ile `.pss` filmler | ⏳ |
-| 7 | Menülerde doğrudan dokunma (hit-test), native mobil his | ⏳ |
-| 8 | Release: imzalama, AAB/APK, cihaz matrisi | ⏳ |
+| 0 | Repo/docs/licensing cleanup, sync script | ✅ |
+| 1 | Gradle + Compose skeleton, JNI bridge, GLES 3.2 boot probe | ✅ |
+| 2 | I/O: ISO over SAF (fd probe done), save dir, config/INI bridge | 🚧 |
+| 3 | GLES 3.2 render path (`render3d`, `showroom`, `race_view`, shader prologue) | ⏳ |
+| 4 | Touch PS2 controls (GLES overlay → `plat_pad_state`) | ⏳ |
+| 5 | Launcher: video/audio/pad options, disc validation details, thumbnail cache | ⏳ |
+| 6 | Menu movies (`.pss`) with embedded FFmpeg (LGPL, MPEG-2 only) | ⏳ |
+| 7 | Direct touch in menus (hit-test), native mobile feel | ⏳ |
+| 8 | Release: signing, APK/AAB, device matrix | ⏳ |
 
-Windows/Linux yolu **bozulmaz**: `_WIN32` kod (harici ffmpeg yolu, Win32 launcher)
-olduğu gibi kalır, Android yalnız kendi dosyalarını ekler.
+The Windows/Linux path is **not** broken: `_WIN32` code (external ffmpeg path,
+Win32 launcher) stays as it is, and Android only adds its own files.
 
 ---
 
-## 2. Kararlar
+## 2. Decisions
 
-| Konu | Karar |
+| Topic | Decision |
 |---|---|
-| Runtime | **SDL2** (Android desteği hazır; `plat_sdl.c` + `pad_sdl.c` yeniden kullanılır) |
-| Grafik | **OpenGL ES 3.2**; shader'lar tek kaynak, hem `#version 330 core` hem `#version 300 es` |
-| AMD FSR | **Yok.** `third_party/fsr1`, `fsr.c`, `fsr_source.c` Android build'ine girmez |
-| Launcher | **Jetpack Compose + Material 3** (yalnız launcher Compose; oyun SDLSurface'te) |
-| ISO | **yerinde**: SAF `openFileDescriptor` → `/proc/self/fd/<n>` yolu oyunun `plat_file_open`'una verilir |
-| Filmler | **gömülü FFmpeg libavcodec (LGPL)**, yalnız `mpeg2video`; sistem `ffmpeg` çağrılmaz |
-| Dosya API'si | `src/platform/common` zaten tam (`plat_file_*`, `plat_disk_free`, `plat_png_read`, `plat_jpeg_png`) → yeni backend yok |
-| D-pad | Oyun içinde dokunmatik pad; **menülerde D-pad yok**, basılan yere basılır |
+| Runtime | **SDL2** (Android support included; `plat_sdl.c` + `pad_sdl.c` are reused) |
+| Graphics | **OpenGL ES 3.2**; single shader source valid for both `#version 330 core` and `#version 300 es` |
+| AMD FSR | **Not present.** `third_party/fsr1`, `fsr.c`, `fsr_source.c` are not in the Android build |
+| Launcher | **Jetpack Compose + Material 3** (launcher only; the game runs in its own Activity/SDLSurface) |
+| Disc | **In place:** SAF `openFileDescriptor` → `/proc/self/fd/<n>` handed to the game's `plat_file_open` |
+| Movies | Embedded **FFmpeg libavcodec (LGPL)**, `mpeg2video` only; no system `ffmpeg` binary |
+| File API | `src/platform/common` already provides everything (`plat_file_*`, `plat_disk_free`, `plat_png_read`, `plat_jpeg_png`) → no new backend |
+| Menus | Touch pad in game; **no D-pad in menus**, tapping activates the item under the finger |
 
-`/proc/self/fd/<n>` yöntemi: `GameActivity` seçilen `content://` URI'yi
-`ParcelFileDescriptor` olarak açar, fd'yi süreç yaşadıkça açık tutar ve oyun
-`argv[1]` olarak bu yolu alır. `open()`/`pread()` doğrudan çalışır, **hiçbir kopya
-oluşmaz**. Sağlayıcı aranabilir (seekable) bir fd vermezse (bulut sağlayıcıları
-tipik olarak pipe döner) launcher açık bir hata verir: "dosyayı cihaz depolamasına
-kopyalayın".
+`/proc/self/fd/<n>`: `GameActivity` opens the chosen `content://` URI as a
+`ParcelFileDescriptor`, keeps it open for the process lifetime and passes that
+path as `argv[1]`. The kernel reopens the same dentry, so no copy is made and no
+storage permission is needed. Providers that hand out a non-seekable fd (cloud
+providers usually return a pipe) are rejected with a clear message: *copy the
+file to this device's storage and select it again*.
 
 ---
 
-## 3. Kaynak düzeni
+## 3. Layout
 
 ```
-android/                          Gradle projesi (Compose launcher + GameActivity + JNI)
+android/                          Gradle project (Compose launcher + GameActivity + JNI)
   app/src/main/java/org/opengt4/android/
-    LauncherActivity.kt           ISO seçimi, ayarlar, Play
-    GameActivity.kt               SDLActivity türevi; getLibraries/getArguments
-    bridge/NativeBridge.kt        JNI: disc doğrulama, config oku/yaz, GLES bilgisi
-    ui/…                          Material 3 ekranlar
+    LauncherActivity.kt           disc selection, validation, Play
+    DiscHolder.kt                 keeps the SAF fd alive, probes seekability
+    GameActivity.kt               SDLActivity subclass; getLibraries/getArguments
+    bridge/NativeBridge.kt        JNI: version banner, disc fd probe, GLES info
+    ui/…                          Material 3 screens and theme
   app/src/main/java/org/libsdl/app/
-    *.java                        SDL2 2.30.9 Java glue (vendor'lı, zlib lisans)
-  app/src/main/cpp/CMakeLists.txt Android native hedefi (SDL2 + core + physics + android backend)
-  third_party/SDL-LICENSE.txt     SDL zlib lisansı (vendor'lı Java için)
-src/platform/android/             Android backend (platform sınırının arkasında)
-  android_platform.h              Android'e özel iç API
-  android_jni.c                   JNI giriş noktaları
-  android_boot.c                  Faz 1: GLES 3.2 bağlam doğrulama ikilisi (geçici)
-  android_video.c                 GLES bağlam/çerçeve yönetimi (Faz 3'te tamamlanır)
-  android_touch.c                 dokunmatik → pad durumu (Faz 4)
-docs/ANDROID.md                   bu dosya
+    *.java                        SDL2 2.30.9 Java glue (vendored, zlib)
+  app/src/main/cpp/CMakeLists.txt Android native target (SDL2 + platform layers)
+  third_party/SDL-LICENSE.txt     SDL zlib license (for the vendored Java glue)
+src/platform/android/             Android backend, behind the platform boundary
+  android_platform.h              internal Android API + logcat macros
+  android_video.c                 SDL2 window, EGL/GLES context, ES 3.2 gate
+  android_jni.c                   JNI entry points, fd probe, version banner
+  android_boot.c                  Phase 1 boot probe (temporary)
+docs/ANDROID.md                   this file
 ```
 
-`src/core/**` hiçbir zaman OS/GPU/dosya API'si çağırmaz; yalnız
-`include/platform/platform.h`. Android'e özel her şey `src/platform/android/**`.
+`src/core/**` never calls an OS, GPU, audio or file API; it only uses
+`include/platform/platform.h`. Everything Android-specific lives in
+`src/platform/android/**`.
+
+Phase 3 will move the shared GL code into `src/platform/gl/` (one copy of
+`render3d.c`, `showroom.c`, `race_view.c`, …) and replace `android_boot.c` with
+`src/app/main.c`. To avoid two copies of the source lists, the lists move to
+`cmake/opengt4_sources.cmake` first.
 
 ---
 
 ## 4. Build
 
-**Bu depoda/analiz ortamında build çalıştırılmaz.** Build yalnızca CI'da koşar:
+Requirements: JDK 17, Android SDK (`platforms;android-35`, `build-tools;35.0.0`),
+NDK `27.0.12077973`, CMake `3.22.1`, and `ANDROID_HOME` (or `ANDROID_SDK_ROOT`)
+pointing at the SDK.
 
-| Workflow | Ne yapar | Durum |
-|---|---|---|
-| `.github/workflows/android-ci.yml` | her push: native derleme + `:app:assembleDebug` + APK artefaktı | ✅ (yalnız özel repoda koşar) |
-| `.github/workflows/android-release.yml` | etiket: imzalı APK + AAB, `dist/` artefaktı | ⏳ Faz 8 |
-| `.github/workflows/desktop-ci.yml` | Windows/Linux yolu bozulmadı mı (asset'siz testler) | ⏳ Faz 2 |
+```sh
+cd android
+gradle --no-daemon :app:assembleDebug     # debug APK
+gradle --no-daemon :app:assembleRelease   # release APK (signing is separate)
+```
 
-`android-ci` işi `github.repository == 'Star1xr/opengt4privaterepo'` koşuluyla
-korunur: public ayna aynı commit'i taşır ama Actions dakikası harcamaz.
+There is deliberately no `./gradlew`: the wrapper jar is a binary and is not
+kept in the repository. Run `gradle wrapper` once if you want one.
 
-Neden CI'da: NDK/SDK/Gradle indirmesi ve tam build, geliştirme ortamında ~GB'lar
-ve uzun süre ister; tekrarlanabilirlik için tek yer CI'dır.
+Artifacts: `android/app/build/outputs/apk/debug/app-debug.apk` (debug) and
+`android/app/build/outputs/apk/release/` (release).
 
-`./gradlew` **yok** (wrapper jar'ı binary'dir ve bu ortamda üretilemez); CI
-`gradle/actions/setup-gradle` ile Gradle'ı indirip `gradle :app:assembleDebug`
-çalıştırır. Yerelde Gradle kullanacak geliştirici `gradle wrapper` ile üretebilir.
-
-Sabitlenen sürümler (tekrarlanabilirlik): Gradle 8.9, AGP 8.7.2, Kotlin 2.0.20,
+Pinned versions, for reproducibility: Gradle 8.9, AGP 8.7.2, Kotlin 2.0.20,
 Compose BOM 2024.09.02, `compileSdk 35` / `minSdk 26` / `targetSdk 34`,
 NDK 27.0.12077973, CMake 3.22.1, SDL 2.30.9 (FetchContent).
 
-Artefaktlar: `android/app/build/outputs/apk/debug/app-debug.apk` (debug),
-`dist/opengt4-android-<version>-arm64.apk` (release).
-
-İmzalama: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
-`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` — **yalnız özel reponun Actions
-secret'larında**, repoda asla.
-
 ---
 
-## 5. Cihazda çalıştırma
+## 5. Running on a device
 
 1. `adb install -r app-debug.apk`
-2. Launcher'da **Disc seç** → `.iso` dosyasını seç (SAF), **Oynat**.
-3. Loglar: `adb logcat -s OpenGT4:V SDL:V AndroidRuntime:E`
+2. In the launcher: **Select disc image** → pick your `.iso` (SAF), then **Play**.
+3. Logs: `adb logcat -s OpenGT4:V SDL:V AndroidRuntime:E`
 
-Faz 1 doğrulaması: uygulama açılır, GLES sürüm satırını loglar (`OpenGT4: GLES
-3.2 …`), ekranı temizleyip çıkar. Bu, SDL2 + EGL + ES 3.2 + JNI + SAF yolunun
-uçtan uca çalıştığını kanıtlar.
+Phase 1 probe: the app logs the GLES lines (`OpenGT4: GLES 3.2 | GLSL …`), checks
+the disc size through `plat_file_read_at`, clears the screen for three seconds and
+returns, which closes the Activity. That proves SDL2 + EGL + ES 3.2 + JNI + SAF
+end to end on real hardware.
 
 ---
 
-## 6. Lisans
+## 6. Licensing
 
-- Kod: **GPLv3** (bkz. `LICENSE`), ek şartlar: `NOTICE` §7.
-- Android sürümü **resmi OpenGT4 değildir**; doküman ve uygulama içinde
-  "Based on OpenGT4" atfı ve "resmi sürüm değildir" ibaresi korunur.
-- Vendor'lı SDL2 Java glue: zlib lisansı (`android/third_party/SDL-LICENSE.txt`).
-- Gömülü FFmpeg (Faz 6): **LGPL** build, dinamik bağlanır, kaynağı ve lisansı
-  `private-assets` branch'inde dağıtılır; yalnız `mpeg2video` dekoderi derlenir.
-- Oyun verisi hiçbir zaman dağıtılmaz; kullanıcı kendi disc'ini kullanır.
+- Code: **GPLv3** (see `LICENSE`); additional terms in `NOTICE` §7.
+- The Android build is **not the official OpenGT4**: the "Based on OpenGT4"
+  attribution and the "unofficial" marker are kept in the docs and in the app.
+- Vendored SDL2 Java glue: zlib license (`android/third_party/SDL-LICENSE.txt`).
+- Embedded FFmpeg (phase 6): **LGPL** build, dynamically linked, with its source
+  and license distributed alongside; only the `mpeg2video` decoder is compiled in.
+- Game data is never distributed; the user supplies their own disc.
+
+---
+
+## 7. Release and signing
+
+Release builds read the keystore from environment variables, never from the repo:
+
+| Variable | Meaning |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | base64 of the `.jks` keystore |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore password |
+| `ANDROID_KEY_ALIAS` | key alias |
+| `ANDROID_KEY_PASSWORD` | key password |
+
+APKs and AABs are written to `dist/` and are never committed; the keystore and
+its passwords live outside the repository.
+
+---
+
+## 8. Risks
+
+| # | Risk | Mitigation |
+|---|---|---|
+| R1 | Driver without ES 3.2 | ES 3.0 fallback, warning in the log; `noperspective` falls back to `smooth` |
+| R2 | Cloud provider returns a pipe | fd seekability probe, explicit error message |
+| R3 | PS2 memory-layout assumptions on a phone | later: memory budget pass; assets keep streaming from the disc |
+| R4 | Movies need FFmpeg | phase 6; until then menu videos are skipped |
+| R5 | Touch latency | overlay is drawn in the same GLES frame, no Java views in the game path |
+| R6 | Android 14+ scoped storage quirks | in-place fd path avoids path permissions entirely |

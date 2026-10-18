@@ -1,10 +1,11 @@
 /*
- * JNI koprusu: org.opengt4.android.bridge.NativeBridge (Kotlin) <-> C.
+ * JNI bridge: org.opengt4.android.bridge.NativeBridge (Kotlin) <-> C.
  *
- * Burada yalnizca ince sarmalayicilar bulunur; oyun mantigi C tarafinda kalir.
- * Disc fd sondasi, launcher'in "kopyalamadan yerinde oku" kuralini dogrular:
- * SAF'in verdigi fd surec yasadikca acik kalir, oyun /proc/self/fd/<n> yolunu
- * dogrudan acar (kernel ayni dentry'yi yeniden acar, kopya olusmaz).
+ * Only thin wrappers live here; the game logic stays on the C side. The disc fd
+ * probe enforces the launcher's "read in place, never copy" rule: the fd handed
+ * out by SAF stays open for the process lifetime and the game opens
+ * /proc/self/fd/<n> directly, so the kernel reopens the same file and no copy
+ * is ever made.
  */
 #include "platform/platform.h"
 #include "android_platform.h"
@@ -13,6 +14,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 const char *plat_android_banner(void)
@@ -33,7 +35,7 @@ int plat_android_fd_probe(int fd, uint64_t *size)
     if (fd < 0) return 0;
     char link[64];
     snprintf(link, sizeof link, "/proc/self/fd/%d", fd);
-    /* Aranabilir olmayan (pipe/soket) saglayicilar burada ENXIO ile elenir. */
+    /* Providers that cannot seek (pipes, sockets) fail here with ENXIO. */
     int copy = open(link, O_RDONLY | O_CLOEXEC);
     if (copy < 0) return 0;
     off_t end = lseek(copy, 0, SEEK_END);
@@ -76,9 +78,9 @@ Java_org_opengt4_android_bridge_NativeBridge_nativeDiscProbe(JNIEnv *env, jobjec
         (*env)->SetLongArrayRegion(env, out, 0, 2, values);
     }
     if (ok) {
-        ALOGI("disc fd %d aranabilir, %llu bayt", (int)fd, (unsigned long long)size);
+        ALOGI("disc fd %d is seekable, %llu bytes", (int)fd, (unsigned long long)size);
     } else {
-        ALOGW("disc fd %d aranabilir degil (saglayici pipe donduruyor olabilir)", (int)fd);
+        ALOGW("disc fd %d is not seekable (provider may return a pipe)", (int)fd);
     }
     return ok ? 1 : 0;
 }

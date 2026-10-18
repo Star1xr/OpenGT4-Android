@@ -13,8 +13,8 @@ import org.opengt4.android.ui.LauncherScreen
 import org.opengt4.android.ui.theme.OpenGt4Theme
 
 /**
- * Launcher: disc secimi + dogrulama + Play. Oyun ayri Activity'de (GameActivity)
- * SDLSurface uzerinde kosar; launcher Compose'dur (AGENTS.md karari).
+ * Launcher: disc selection, validation and Play. The game runs in its own
+ * Activity (GameActivity) on an SDLSurface; the launcher is Compose.
  */
 class LauncherActivity : ComponentActivity() {
 
@@ -36,7 +36,7 @@ class LauncherActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         banner = runCatching { NativeBridge.nativeVersion() }.getOrDefault("")
-        // Ayni oturumda yeniden acilirsa kalici izinle disc hazir kalir.
+        // A saved disc stays ready across launches while the permission lasts.
         sync(DiscHolder.reopenSaved(this))
 
         setContent {
