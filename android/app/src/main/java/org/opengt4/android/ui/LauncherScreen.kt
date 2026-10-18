@@ -29,9 +29,10 @@ import org.opengt4.android.R
 import java.util.Locale
 
 /**
- * Phase 1 launcher: select a disc, validate it, play. Video/audio/pad options
- * (phase 5) reuse the same INI files as the PC launcher
- * (src/app/launcher_config.c).
+ * Launcher: select a disc, check it, play. The check is the game's own
+ * validation code, so the message is the disc description or the reason it was
+ * rejected. Video/audio/pad settings (phase 5) reuse the same INI files as the
+ * PC launcher (src/app/launcher_config.c).
  */
 @Composable
 fun LauncherScreen(
@@ -39,6 +40,8 @@ fun LauncherScreen(
     discBytes: Long,
     ready: Boolean,
     busy: Boolean,
+    validated: Boolean?,
+    validationText: String?,
     errorText: String?,
     banner: String,
     onSelect: () -> Unit,
@@ -90,6 +93,17 @@ fun LauncherScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    if (validationText != null) {
+                        Text(
+                            text = validationText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (validated == true) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                        )
+                    }
                 }
             }
 
@@ -106,7 +120,7 @@ fun LauncherScreen(
 
             Button(
                 onClick = onPlay,
-                enabled = ready && !busy,
+                enabled = ready && !busy && validated != false,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
             ) {
                 if (busy) {

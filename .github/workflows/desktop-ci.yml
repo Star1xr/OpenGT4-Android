@@ -1,0 +1,56 @@
+# OpenGT4 desktop build (Linux).
+#
+# The job runs only where the repository variable OPENGT4_CI is set to "on".
+# Mirrors without that variable skip the job and spend no Actions minutes.
+#
+# It builds the same tree the desktop version is built from and runs the
+# asset-free tests, so a change to the shared CMake structure or to src/core
+# cannot break the desktop build unnoticed. The Android build reuses these
+# libraries (OPENGT4_LIBS_ONLY), which is what this job guards.
+name: desktop-ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: vars.OPENGT4_CI == 'on'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # SDL2 and miniz are fetched by CMake. These are the Linux headers SDL
+      # needs to configure, plus the X server and software OpenGL the tests use.
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build xvfb libgl1-mesa-dri libgl1-mesa-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxinerama-dev libasound2-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      # The asset-free tests AGENTS.md makes mandatory. The disc tests are
+      # registered only when OPENGT4_TEST_DISC is set, which it is not here. A
+      # runner has no display, so the UI tests run under Xvfb with Mesa's
+      # software OpenGL.
+      - name: Asset-free tests
+        run: |
+          xvfb-run -a -s "-screen 0 1280x1024x24" ctest --test-dir build --output-on-failure \
+            -R "^(ee_memory|ee_sif|ui_text|native_model|model_stream|driver_model|native_course|native_media|replay_file|steering_model|render3d_frustum|specdb|menu_navigation|model_attachments|showroom_math|launcher_config|launcher_config_negative)$"

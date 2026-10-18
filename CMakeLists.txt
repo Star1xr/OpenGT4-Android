@@ -17,14 +17,16 @@ FetchContent_MakeAvailable(miniz)
 unset(CMAKE_POLICY_VERSION_MINIMUM)
 
 # SDL2: window, 2D rendering, input. Static, so the program is one file.
-set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-set(SDL_STATIC ON CACHE BOOL "" FORCE)
-set(SDL_TEST OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(SDL2
-  GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-  GIT_TAG release-2.30.9
-  GIT_SHALLOW TRUE)
-FetchContent_MakeAvailable(SDL2)
+if(NOT OPENGT4_LIBS_ONLY)
+  set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+  set(SDL_STATIC ON CACHE BOOL "" FORCE)
+  set(SDL_TEST OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(SDL2
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+    GIT_TAG release-2.30.9
+    GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(SDL2)
+endif()
 
 # ---- Native port ----
 # Platform-independent game code: data formats, UI, game systems.
@@ -155,6 +157,13 @@ endif()
 add_library(opengt4_platform_common STATIC src/platform/common/file_stdio.c src/platform/common/album_storage.c src/platform/common/jpeg_storage.c)
 target_link_libraries(opengt4_platform_common PRIVATE miniz)
 target_include_directories(opengt4_platform_common PUBLIC include)
+
+# Android reuses the libraries above and brings its own SDL2 setup and platform
+# layer (android/app/src/main/cpp/CMakeLists.txt). Tools, tests and the SDL
+# platform layer would otherwise configure a second, static SDL.
+if(OPENGT4_LIBS_ONLY)
+  return()
+endif()
 
 # Command-line tools built on the port's own code.
 add_executable(gt4vol tools/c/gt4vol.c)

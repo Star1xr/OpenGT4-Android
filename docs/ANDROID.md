@@ -56,9 +56,15 @@ src/core stays portable and the Windows build is untouched.
 ## State
 
 Phase 1 works: the app starts, creates a GLES 3.2 context, checks the disc and
-draws for a few seconds before it closes. Next are the real render path, touch
-controls, launcher options, menu movies with an embedded FFmpeg build, and
-tapping directly on menu items.
+draws for a few seconds before it closes.
+
+Phase 2 is in: the launcher checks the disc with the game's own code, so it
+either names the disc ("Gran Turismo 4 - NTSC-U / SCUS-97328 / v2.00") or says
+why it was rejected, and it reads and writes video.ini through the same launcher
+code as the desktop build. The game itself is not wired up yet.
+
+Next are the real render path, touch controls, the launcher settings screen,
+menu movies with an embedded FFmpeg build, and tapping directly on menu items.
 
 ## Signing
 

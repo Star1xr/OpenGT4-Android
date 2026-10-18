@@ -36,10 +36,32 @@ object DiscHolder {
     var error: String? = null
         private set
 
+    /**
+     * Result of the full disc check (SYSTEM.CNF, boot file, CORE.GT4, volume).
+     * null means it has not been checked in this session, which is the state
+     * after reopening a saved disc at startup; the launcher only checks when the
+     * user picks a disc.
+     */
+    var validated: Boolean? = null
+        private set
+
+    /** Description or rejection message coming from the shared launcher code. */
+    var validation: String? = null
+        private set
+
     val ready: Boolean get() = descriptor != null
 
     /** The path handed to the game as `argv[1]`. */
     fun procPath(): String? = descriptor?.let { "/proc/self/fd/${it.fd}" }
+
+    /**
+     * Records the full disc check. Only the native side can decide this: it is
+     * the same code path the PC launcher uses.
+     */
+    fun setValidation(ok: Boolean, message: String) {
+        validated = ok
+        validation = message
+    }
 
     fun savedUri(ctx: Context): String? = prefs(ctx).getString(keyUri, null)
 
@@ -105,6 +127,9 @@ object DiscHolder {
         } catch (ignored: Exception) {
         }
         descriptor = null
+        /* A different file must be checked again. */
+        validated = null
+        validation = null
     }
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
