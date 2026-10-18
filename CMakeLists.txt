@@ -29,6 +29,16 @@ if(NOT OPENGT4_LIBS_ONLY)
 endif()
 
 # ---- Native port ----
+# libm: on Windows the math functions are part of the CRT, on Linux and Android
+# they live in a separate library, so every target that computes carries it.
+# Only the Android target linked it before; the desktop tools and tests missed
+# it and failed to link with undefined sqrtf, fminf, fegetround and friends.
+add_library(opengt4_math INTERFACE)
+if(NOT MSVC)
+  target_link_libraries(opengt4_math INTERFACE m)
+endif()
+link_libraries(opengt4_math)
+
 # Platform-independent game code: data formats, UI, game systems.
 set_source_files_properties(src/core/album_slide.c src/core/course_gadget.c src/core/license_image.c src/platform/sdl/license_scene.c PROPERTIES COMPILE_OPTIONS "$<$<C_COMPILER_ID:MSVC>:/fp:strict>;$<$<NOT:$<C_COMPILER_ID:MSVC>>:-ffp-contract=off;-frounding-math>")
 add_library(opengt4_core STATIC
