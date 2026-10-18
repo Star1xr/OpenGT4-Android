@@ -195,6 +195,11 @@ target_include_directories(opengt4_platform_sdl PUBLIC include src/platform/sdl 
 target_link_libraries(opengt4_platform_sdl PUBLIC SDL2::SDL2-static opengt4_physics)
 if(WIN32)
   target_link_libraries(opengt4_platform_sdl PUBLIC opengl32)   # GL 1.1 entry points
+else()
+  # Linux keeps the GL 1.1 entry points in libGL, which the Windows SDK folds
+  # into opengl32. Every target that links this library gets it transitively.
+  find_package(OpenGL REQUIRED)
+  target_link_libraries(opengt4_platform_sdl PUBLIC OpenGL::GL)
 endif()
 find_program(OPENGT4_FFMPEG NAMES ffmpeg DOC "FFmpeg executable for menu MPEG-2 playback (not a launcher shim)")
 # a release looks for FFmpeg beside the exe and on PATH only, never at a
