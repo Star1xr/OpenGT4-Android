@@ -1677,8 +1677,13 @@ static void read_controls(race_game *g)
     const uint8_t *keys = SDL_GetKeyboardState(NULL);
     static const uint8_t no_camera_keys[SDL_NUM_SCANCODES];
     if(g->cinema.on)keys=no_camera_keys; /* camera keyboard, driving pad remains live */
-    float steer = (float)(keys[SDL_SCANCODE_LEFT] - keys[SDL_SCANCODE_RIGHT]);
-    float throttle = keys[SDL_SCANCODE_UP] ? 1.f : 0.f, brake = keys[SDL_SCANCODE_DOWN] ? 1.f : 0.f;
+    /* The arrows and WASD both drive. The second set is what a player at a
+       keyboard reaches for, and the two player split already gives it to
+       player two, so single player accepts it too. */
+    float steer = (float)((keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) -
+                          (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D]));
+    float throttle = (keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W]) ? 1.f : 0.f;
+    float brake = (keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S]) ? 1.f : 0.f;
     if (getenv("OPENGT4_RACE_TEST_DRIVE")) {   /* tests: throttle on, the wheel swinging with the wall clock */
         double t = SDL_GetTicks() / 1000.0;
         throttle = 1;
@@ -1694,9 +1699,12 @@ static void read_controls(race_game *g)
         steer=0;throttle=g->license_test_frame>=wait && g->license_test_frame<brake_at;
         brake=g->license_test_frame>=brake_at;
     }
-    float hand = keys[SDL_SCANCODE_SPACE] ? 1.f : 0.f;
+    float hand = (keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_LCTRL]) ? 1.f : 0.f;
     int analog = 0, view;
-    command.shift = (int8_t)(g->split?(keys[SDL_SCANCODE_PAGEUP]-keys[SDL_SCANCODE_PAGEDOWN]):(keys[SDL_SCANCODE_A]-keys[SDL_SCANCODE_Z]));
+    /* Gears: the arrows' own pair, which is the two player split's as well,
+       so A and D stay free for steering (split's page up/down is player
+       two's). */
+    command.shift = (int8_t)(g->split?(keys[SDL_SCANCODE_PAGEUP]-keys[SDL_SCANCODE_PAGEDOWN]):(keys[SDL_SCANCODE_Q]-keys[SDL_SCANCODE_E]));
     if(g->split)read_second_controls(g,keys);
     plat_pad_state state;gt4_pad_config config;gt4_pad_actions pad={0};
     int connected=plat_input_poll(0,&state);

@@ -425,13 +425,15 @@ int main(int argc, char **argv)
 
         /* Controls. The keyboard is a digital pad (the buttons as they are:
            the game's own digital handling eases steering, throttle and
-           brake); a game controller is an analog pad. */
+           brake); a game controller is an analog pad. The arrow keys and WASD
+           are the same controls, as in the race. */
         keys = SDL_GetKeyboardState(NULL);
-        want_steer = (float)(keys[SDL_SCANCODE_LEFT] - keys[SDL_SCANCODE_RIGHT]);
-        throttle = keys[SDL_SCANCODE_UP] ? 1.f : 0.f;
-        brake = keys[SDL_SCANCODE_DOWN] ? 1.f : 0.f;
-        hand = keys[SDL_SCANCODE_SPACE] ? 1.f : 0.f;
-        command.shift = (int8_t)(keys[SDL_SCANCODE_A] - keys[SDL_SCANCODE_Z]);
+        want_steer = (float)((keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) -
+                             (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D]));
+        throttle = (keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W]) ? 1.f : 0.f;
+        brake = (keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S]) ? 1.f : 0.f;
+        hand = (keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_LCTRL]) ? 1.f : 0.f;
+        command.shift = (int8_t)(keys[SDL_SCANCODE_Q] - keys[SDL_SCANCODE_E]);
         if (pad) command.shift = (int8_t)(command.shift + SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)
                                           - SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER));
         steer = want_steer;

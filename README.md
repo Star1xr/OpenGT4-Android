@@ -81,10 +81,10 @@ A controller is recommended; any controller SDL recognises works, with the PlayS
 
 | | Controller | Keyboard |
 |---|---|---|
-| Steer | left stick | arrows |
-| Accelerate / brake | Cross / Square | up / down |
-| Shift up / down | R2 / L2 | A / Z |
-| Handbrake | Circle | Space |
+| Steer | left stick | arrows or A / D |
+| Accelerate / brake | Cross / Square | up / W, down / S |
+| Shift up / down | R2 / L2 | Q / E |
+| Handbrake | Circle | Space or Left Ctrl |
 | Reverse | Triangle | |
 | Look back / change view | L1 / Select | V |
 | Pause | Start | Esc |
