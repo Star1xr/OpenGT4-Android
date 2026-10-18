@@ -17,6 +17,7 @@
 #include "platform/platform.h"
 #include "android_platform.h"
 #include "video_gl.h"
+#include "render3d.h"
 
 #include <SDL.h>
 #include <stdarg.h>
@@ -184,7 +185,8 @@ void plat_video_begin_frame(void)
 }
 
 /* The log file is the only place a player can see how a scene really runs, so
-   one line every five seconds with the frame rate and the worst frame. */
+   one line every five seconds with the frame rate, the worst frame, and what
+   the 3D pass of the last frame drew (r3d_begin resets those counters). */
 static void frame_stats(void)
 {
     static Uint64 window_start, previous;
@@ -200,8 +202,11 @@ static void frame_stats(void)
     frames++;
     if (now - window_start < (Uint64)(5.0 * frequency)) return;
     double seconds = (now - window_start) / frequency;
-    fprintf(stderr, "frame: %u in %.1fs, %.1f fps, mean %.1f ms, max %.1f ms\n",
-            frames, seconds, frames / seconds, seconds * 1000.0 / frames, worst * 1000.0 / frequency);
+    r3d_stats drew = r3d_frame_stats();
+    fprintf(stderr, "frame: %u in %.1fs, %.1f fps, mean %.1f ms, max %.1f ms,"
+                    " last frame %u draws, %u triangles, %u groups culled\n",
+            frames, seconds, frames / seconds, seconds * 1000.0 / frames, worst * 1000.0 / frequency,
+            drew.draws, drew.triangles, drew.culled_groups);
     fflush(stderr);
     window_start = now; frames = 0; worst = 0;
 }
