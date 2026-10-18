@@ -46,6 +46,7 @@ add_library(opengt4 SHARED
     ${OPENGT4_ROOT}/src/platform/android/android_jni.c
     ${OPENGT4_ROOT}/src/platform/android/android_launcher.c
     ${OPENGT4_ROOT}/src/platform/android/android_movie.c
+    ${OPENGT4_ROOT}/src/platform/android/android_touch.c
     ${OPENGT4_ROOT}/src/platform/android/android_video.c
     ${OPENGT4_ROOT}/src/platform/sdl/plat_sdl.c
     ${OPENGT4_ROOT}/src/platform/sdl/pad_sdl.c

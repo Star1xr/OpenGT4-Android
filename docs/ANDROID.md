@@ -17,8 +17,8 @@ project (GPLv3, see NOTICE).
 Work in progress. The launcher runs and checks the disc, and the game starts on
 the shared GLES renderer: the 2D UI, the menus and the 3D scenes draw, the last
 of them through the same shaders as the desktop build, ported to the ES GLSL
-dialect. Touch controls, films, save transfer and the performance pass are still
-missing.
+dialect. The on-screen PS2 pad drives the menus and the races; films, save
+transfer and the performance pass are still missing.
 
 ## Building
 
@@ -48,8 +48,9 @@ Android sends the game's output nowhere, so the game writes it to
 `logs/opengt4.log` in its own files directory. The launcher's Share log button
 sends that file, and the session before it stays as `logs/opengt4.log.prev`, so
 a crash does not take the older one with it. The log holds the GLES version, the
-driver, the shader messages, the size 3D scenes are drawn at and, every five
-seconds, the frame rate with the worst frame of that window.
+driver, the shader messages, the size 3D scenes are drawn at, whether the
+on-screen pad or a connected controller is driving, and, every five seconds, the
+frame rate with the worst frame of that window.
 
 ## Reading the disc
 
@@ -58,6 +59,17 @@ lifetime of the process. The game receives it as /proc/self/fd/<n> and reads it
 with 64-bit offsets, so the image stays where it is and no storage permission is
 needed. Providers that cannot seek, which is most cloud providers, are rejected
 with a message asking the user to copy the file to the device first.
+
+## Controls
+
+The PS2 pad is on the screen: the D-pad and the four action buttons in the
+bottom corners, L1/L2 and R1/R2 at the top, START and SELECT at the bottom
+centre. They are the real PS2 buttons, so the game's own key configuration
+applies to them exactly as it does to a wired controller. Analog sticks and
+progressive pedals are not on the screen yet.
+
+A controller connected over Bluetooth or USB takes the first player, and the
+on-screen pad hides while it is there. Remove it and the pad returns.
 
 ## Layout
 

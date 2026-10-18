@@ -10,6 +10,9 @@
  * scene resolver is registered, so video_end_scene copies the scene as is.
  * desc->width/height (the game's Resolution setting) is the size 3D scenes are
  * drawn at, and the scene is blitted up to the panel from there.
+ *
+ * The on-screen PS2 pad (android_touch.c) is the last layer of every frame and
+ * the last thing shutdown takes down.
  */
 #include "platform/platform.h"
 #include "android_platform.h"
@@ -19,9 +22,10 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-/* logcat needs adb and the game's own log is stderr, so every line from this
-   file goes to both: the launcher can share the file, nobody can share logcat. */
-static void notify(int priority, const char *format, ...)
+/* logcat needs adb and the game's own log is stderr, so every line from the
+   Android files goes to both: the launcher can share the file, nobody can share
+   logcat. */
+void plat_android_log(int priority, const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
@@ -37,9 +41,9 @@ static void notify(int priority, const char *format, ...)
 #undef ALOGI
 #undef ALOGW
 #undef ALOGE
-#define ALOGI(...) notify(ANDROID_LOG_INFO, __VA_ARGS__)
-#define ALOGW(...) notify(ANDROID_LOG_WARN, __VA_ARGS__)
-#define ALOGE(...) notify(ANDROID_LOG_ERROR, __VA_ARGS__)
+#define ALOGI(...) plat_android_log(ANDROID_LOG_INFO, __VA_ARGS__)
+#define ALOGW(...) plat_android_log(ANDROID_LOG_WARN, __VA_ARGS__)
+#define ALOGE(...) plat_android_log(ANDROID_LOG_ERROR, __VA_ARGS__)
 
 static SDL_Window   *window;
 static SDL_GLContext context;
@@ -159,6 +163,10 @@ int plat_video_init(const plat_video_desc *desc)
     video_set_samples(1);
     ALOGI("render: drawable %dx%d, scene %dx%d, MSAA off", w, h,
           desc && desc->width > 0 ? desc->width : w, desc && desc->height > 0 ? desc->height : h);
+
+    /* The touch PS2 controls; they draw with the shared 2D renderer, so the
+       atlas is built here, while the context is current. */
+    plat_android_touch_init();
     return 0;
 }
 
@@ -169,6 +177,8 @@ void plat_video_begin_frame(void)
     int w = 0, h = 0;
     if (window) SDL_GL_GetDrawableSize(window, &w, &h);
     video_gl_set_drawable(w, h);
+    /* The frame's fingers become the pad's buttons before the game reads it. */
+    plat_android_touch_update();
     video_gl_frame_begin();
 }
 
@@ -197,6 +207,8 @@ static void frame_stats(void)
 
 void plat_video_end_frame(void)
 {
+    /* Last layer of the frame: the on-screen pad, at the panel resolution. */
+    plat_android_touch_draw();
     video_gl_frame_end();
     if (window && video_gl_should_present()) SDL_GL_SwapWindow(window);
     frame_stats();
@@ -212,6 +224,7 @@ void plat_video_shutdown(void)
 {
     plat_audio_shutdown();
     plat_input_shutdown();
+    plat_android_touch_shutdown();
     video_gl_shutdown();
     if (context) {
         SDL_GL_DeleteContext(context);

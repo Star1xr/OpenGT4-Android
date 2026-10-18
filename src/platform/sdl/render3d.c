@@ -43,22 +43,64 @@ static char *glsl_source(const char *body, int noperspective)
     return source;
 }
 
-/* A driver that advertises the extension and still rejects the keyword leaves
-   the 3D renderer without any program, so every program after it is built
-   smoothly instead. */
+/* A driver that advertises the extension is not a promise: Adreno 650 lists
+   GL_NV_shader_noperspective_interpolation and still rejects the keyword, and
+   prints a compile log for every program that tries. One minimal pair, compiled
+   here without the log, answers the question once, so the real programs never
+   fail on it. */
+static int glsl_try_noperspective(void)
+{
+    static const char *const stage[2] = {
+        "NOPERSPECTIVE out float v_test;\nvoid main(){v_test=0.0;gl_Position=vec4(0.0);}\n",
+        "NOPERSPECTIVE in float v_test;\nout vec4 o;\nvoid main(){o=vec4(v_test);}\n"
+    };
+    GLuint sh[2] = { glCreateShader(GL_VERTEX_SHADER), glCreateShader(GL_FRAGMENT_SHADER) };
+    int ok = 1;
+    for (int i = 0; i < 2 && ok; i++) {
+        char *source = glsl_source(stage[i], 1);
+        const char *text = source;
+        if (!text) { ok = 0; break; }
+        glShaderSource(sh[i], 1, &text, NULL);
+        glCompileShader(sh[i]);
+        GLint status = 0;
+        glGetShaderiv(sh[i], GL_COMPILE_STATUS, &status);
+        ok = status != 0;
+        free(source);
+    }
+    glDeleteShader(sh[0]);
+    glDeleteShader(sh[1]);
+    return ok;
+}
+
+static int gl_noperspective_usable(void)
+{
+    static int usable = -1;
+    if (usable < 0) {
+        int advertised = gl_noperspective_supported();
+        usable = advertised && glsl_try_noperspective();
+        if (advertised && !usable) {
+            fprintf(stderr, "3D varyings: smooth (the driver refused noperspective)\n");
+            fflush(stderr);
+        }
+    }
+    return usable;
+}
+
+/* Set when a real program fails with the qualifier although the probe passed;
+   every program after it is built smoothly instead. */
 static int smooth_only;
 
 /* Both stages get the prolog; the driver copies the text, so it is freed. */
 static GLuint glsl_program(const char *vertex, const char *fragment)
 {
-    int noperspective = !smooth_only && gl_noperspective_supported();
+    int noperspective = !smooth_only && gl_noperspective_usable();
     char *v = glsl_source(vertex, noperspective), *f = glsl_source(fragment, noperspective);
     GLuint program = (v && f) ? gl_program(v, f) : 0;
     free(v);
     free(f);
     if (!program && noperspective) {
         smooth_only = 1;
-        fprintf(stderr, "3D shaders: driver refused noperspective, using smooth varyings\n");
+        fprintf(stderr, "3D shaders: a program with noperspective failed, retrying smooth\n");
         fflush(stderr);
         v = glsl_source(vertex, 0);
         f = glsl_source(fragment, 0);
