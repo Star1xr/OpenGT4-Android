@@ -52,8 +52,8 @@ a crash does not take the older one with it. The log holds the GLES version, the
 driver, the shader messages, the size 3D scenes are drawn at, which input
 devices the launcher saw, whether the on-screen pad or a connected controller is
 driving, and, every five seconds, the frame rate with the worst frame of that
-window plus what a frame costs on the CPU and, on a sample of frames, on the
-GPU.
+window, plus what a frame costs: the CPU's own submission time, the share the 3D
+scene takes of it, the GPU time on a sample of frames, and the draw counts.
 
 ## Reading the disc
 
@@ -79,13 +79,15 @@ A controller connected over Bluetooth or USB takes the first player, and the
 on-screen pad hides while it is there. Remove it and the pad returns.
 
 The launcher lists the devices the system reports (gamepad or wheel, keyboard
-and mouse) and follows them as they are plugged in and out. A keyboard or a
-mouse hides the on-screen pad; a gamepad or a wheel hides it only when the game
-can actually use that device, so a device the system calls a gamepad but nothing
-can open never leaves the player without controls. The On-screen pad buttons in
-the launcher force the pad on or off instead. A keyboard drives with the arrows
-or with W, A, S and D, shifts with Q and E, brakes with Space and pauses with
-Esc.
+and mouse) and follows them as they are plugged in and out. Only devices the
+player can really use count: the power and volume keys, a headset button, the
+pen and the keyboard the system's input method draws on the screen all call
+themselves keyboards, and none of them is one. A keyboard or a mouse hides the
+on-screen pad; a gamepad or a wheel hides it only when the game can actually use
+that device, so a device the system calls a gamepad but nothing can open never
+leaves the player without controls. The On-screen pad buttons in the launcher
+force the pad on or off instead. A keyboard drives with the arrows or with W, A,
+S and D, shifts with Q and E, brakes with Space and pauses with Esc.
 
 The launcher writes every device the system reports to the log, with its
 sources, and the game writes what it decided ("controls: on-screen pad auto,

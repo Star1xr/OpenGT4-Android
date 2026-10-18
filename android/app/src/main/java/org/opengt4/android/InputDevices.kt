@@ -110,20 +110,29 @@ object InputDevices {
             override fun onInputDeviceChanged(deviceId: Int) = onChanged()
         }
 
-    /** A gamepad or wheel, a keyboard or a mouse; null for anything else. */
+    /**
+     * A gamepad or wheel, a keyboard or a mouse; null for anything else.
+     *
+     * The power and volume keys, a headset button, the pen and the virtual
+     * keyboard of the IME all report themselves as keyboards. None of them is
+     * one, and a device the player cannot type on must not hide the controls:
+     * only a keyboard with alphabetic keys counts, and a keyboard the system
+     * made up (the IME's) never does.
+     */
     private fun kindOf(device: InputDevice): Int? {
         val sources = device.sources
         /* A finger or a pen is what the on-screen pad is for, not a reason to
            hide it: a stylus is also reported as a mouse. */
         if (sources and InputDevice.SOURCE_TOUCHSCREEN != 0) return null
         if (sources and InputDevice.SOURCE_STYLUS != 0) return null
-        /* A joystick with no motion range is a name, not a pad. Some keyboards
+        if (device.isVirtual) return null
+        /* A joystick with no motion range is a name, not a pad: some keyboards
            carry a stray gamepad bit, and hiding the controls for one of those
            leaves a tablet with no way to drive. */
         val pad = sources and (InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_JOYSTICK)
         if (pad != 0 && device.motionRanges.isNotEmpty()) return DeviceKind.GAMEPAD
         if (sources and InputDevice.SOURCE_KEYBOARD != 0 &&
-            device.keyboardType != InputDevice.KEYBOARD_TYPE_NONE) return DeviceKind.KEYBOARD
+            device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC) return DeviceKind.KEYBOARD
         if (sources and InputDevice.SOURCE_MOUSE != 0) return DeviceKind.MOUSE
         return null
     }
