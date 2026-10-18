@@ -18,34 +18,45 @@ concurrency:
 jobs:
   build:
     if: vars.OPENGT4_CI == 'on'
-    runs-on: ubuntu-latest
+    # Pinned on purpose: ubuntu-latest moves to Ubuntu 26 on 2026-10-19.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
-    env:
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
       # The runner image already ships the SDK. android-actions/setup-android is
       # avoided on purpose: it installs the legacy "tools" package, which no
-      # longer exists in current cmdline-tools.
-      - name: Put cmdline-tools on PATH
+      # longer exists in current cmdline-tools. The SDK path is discovered
+      # instead of hardcoded, so an image change cannot break the job.
+      - name: Locate the Android SDK
         run: |
-          CMDLINE="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin 2>/dev/null | sort -V | tail -1)"
-          if [ -z "$CMDLINE" ]; then
-            echo "no cmdline-tools found under $ANDROID_SDK_ROOT" >&2
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            for d in /usr/local/lib/android/sdk "$HOME/Android/Sdk"; do
+              if [ -d "$d" ]; then SDK="$d"; break; fi
+            done
+          fi
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            echo "no Android SDK found" >&2
             exit 1
           fi
+          CMDLINE="$(ls -d "$SDK"/cmdline-tools/*/bin 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$CMDLINE" ]; then
+            echo "no cmdline-tools under $SDK" >&2
+            exit 1
+          fi
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "$CMDLINE" >> "$GITHUB_PATH"
-          echo "using $CMDLINE"
+          echo "sdk: $SDK (using $CMDLINE)"
 
       - name: Install SDK, NDK and CMake
         run: |
@@ -57,7 +68,7 @@ jobs:
             "cmake;3.22.1"
 
       - name: Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.9'
 
@@ -65,9 +76,12 @@ jobs:
         working-directory: android
         run: gradle --no-daemon --console=plain --stacktrace :app:assembleDebug
 
+      # archive: false uploads the APK itself, so the artifact is the
+      # installable file and not a zip around it.
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: opengt4-android-debug
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          archive: false
