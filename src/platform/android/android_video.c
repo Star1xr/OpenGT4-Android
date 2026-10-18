@@ -161,8 +161,9 @@ int plat_video_init(const plat_video_desc *desc)
        resolves cost more than they are worth on a phone GPU. */
     video_set_render_size(desc ? desc->width : 0, desc ? desc->height : 0);
     video_set_samples(1);
-    ALOGI("render: drawable %dx%d, scene %dx%d, MSAA off", w, h,
-          desc && desc->width > 0 ? desc->width : w, desc && desc->height > 0 ? desc->height : h);
+    ALOGI("render: drawable %dx%d, scene %dx%d, MSAA off, vsync %d", w, h,
+          desc && desc->width > 0 ? desc->width : w, desc && desc->height > 0 ? desc->height : h,
+          SDL_GL_GetSwapInterval());
 
     /* The touch PS2 controls; they draw with the shared 2D renderer, so the
        atlas is built here, while the context is current. */

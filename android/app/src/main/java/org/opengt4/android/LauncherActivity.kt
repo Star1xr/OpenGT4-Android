@@ -97,14 +97,8 @@ class LauncherActivity : ComponentActivity() {
                         NativeBridge.nativeLoadOptions(videoFile, savesDir, values)
                     }
                     if (ok != 1) return@LaunchedEffect
+                    withContext(Dispatchers.IO) { androidVideoDefaults(values) }
                     videoOptions = VideoOptions.fromArray(values)
-                    // First run: write the defaults so the file exists and can
-                    // be edited; later runs keep whatever is in it.
-                    if (!File(videoFile).exists()) {
-                        withContext(Dispatchers.IO) {
-                            NativeBridge.nativeSaveOptions(videoFile, savesDir, 1, values)
-                        }
-                    }
                 }
 
                 // Full disc check, started by the picker above.
@@ -134,6 +128,42 @@ class LauncherActivity : ComponentActivity() {
         discName = if (ready) DiscHolder.name else ""
         discBytes = if (ready) DiscHolder.bytes else -1L
         errorKey = DiscHolder.error
+    }
+
+    /**
+     * The Android build's own video defaults: fullscreen on and vsync off. A
+     * first run writes the file (so it exists and can be edited), and an
+     * existing file still holding the desktop defaults is moved over once.
+     * The marker file keeps the choice afterwards, so a player who turns either
+     * field back on in the game's Screen settings keeps it.
+     */
+    private fun androidVideoDefaults(values: IntArray) {
+        val marker = File(filesDir, "video.ini.android")
+        if (marker.exists()) return
+        val file = File(videoFile)
+        if (!file.exists()) {
+            values[2] = 1    // fullscreen
+            values[3] = 0    // vsync
+            NativeBridge.nativeSaveOptions(videoFile, savesDir, 1, values)
+        } else {
+            val lines = file.readLines()
+            val desktopDefaults = lines.any { it.trim() == "fullscreen=0" } &&
+                lines.any { it.trim() == "vsync=1" }
+            if (desktopDefaults) {
+                file.writeText(
+                    lines.joinToString("\n") { line ->
+                        when (line.trim()) {
+                            "fullscreen=0" -> "fullscreen=1"
+                            "vsync=1" -> "vsync=0"
+                            else -> line
+                        }
+                    } + "\n"
+                )
+                values[2] = 1
+                values[3] = 0
+            }
+        }
+        runCatching { marker.createNewFile() }
     }
 
     private fun play() {
