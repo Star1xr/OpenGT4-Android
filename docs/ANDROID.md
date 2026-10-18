@@ -13,8 +13,9 @@ project (GPLv3, see NOTICE).
 
 ## Status
 
-Work in progress. The launcher runs and checks the disc; the game itself is not
-wired up yet.
+Work in progress. The launcher runs and checks the disc, and the game starts on
+the shared GLES renderer: the 2D UI and the menus draw. Touch controls, films,
+save transfer and the performance pass are still missing.
 
 ## Building
 
@@ -54,7 +55,7 @@ with a message asking the user to copy the file to the device first.
     android/               Gradle project: Compose launcher, GameActivity, JNI bridge
     src/platform/android/  Android backend, behind the platform layer
     src/platform/common/   shared file access, reused as is
-    src/platform/sdl/      shared time, audio and input, reused as is
+    src/platform/sdl/      shared time, audio, input and the GL/GLES renderer, reused as is
 
 Everything that touches the operating system sits in src/platform/android/, so
 src/core stays portable and the Windows build is untouched.

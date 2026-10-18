@@ -1,26 +1,26 @@
 /*
- * Android video: SDL2 window plus the EGL/GLES context.
+ * Android video: the SDL2 window, the EGL/GLES context and the present.
  *
- * Phase 1: context setup, the ES 3.2 gate, clear and present.
- * Phase 3: the batched 2D renderer and the 3D scene move here, sharing one copy
- *          of the GL sources under src/platform/gl/. The symbols that are
- *          intentionally missing here (plat_draw_*, plat_texture_*, ...) are
- *          added in phase 3 so that the linker fails loudly instead of leaving
- *          a silent black screen.
- * There is no FSR/upscale path (pure port): desc->upscale is ignored.
+ * The drawing is the shared renderer in render_gl.c under src/platform/sdl/,
+ * the same code the desktop build runs, so the 2D path, the scene target and
+ * the shaders have one source. Only the context (GLES 3.2 instead of desktop
+ * OpenGL) and the present differ here.
+ *
+ * There is no FSR/upscale path (pure port): desc->upscale is ignored and no
+ * scene resolver is registered, so video_end_scene copies the scene as is.
  */
 #include "platform/platform.h"
 #include "android_platform.h"
+#include "video_gl.h"
 
 #include <SDL.h>
-#include <GLES3/gl3.h>
 #include <stdio.h>
 
 static SDL_Window   *window;
 static SDL_GLContext context;
 static int es_major, es_minor, es32;
 static char gl_info[320];
-static float view_w = 640.0f, view_h = 448.0f;
+static int display_w = 1280, display_h = 720;
 
 int plat_android_es_major(void) { return es_major; }
 int plat_android_es_minor(void) { return es_minor; }
@@ -36,7 +36,7 @@ static const char *glstr(GLenum name)
 static int create_window(void)
 {
     /* Android takes the size from the display; the window size is only a hint. */
-    int w = view_w > 0 ? (int)view_w : 1280, h = view_h > 0 ? (int)view_h : 720;
+    int w = display_w, h = display_h;
     SDL_DisplayMode mode;
     if (SDL_GetCurrentDisplayMode(0, &mode) == 0 && mode.w > 0 && mode.h > 0) {
         w = mode.w;
@@ -61,10 +61,8 @@ int plat_video_init(const plat_video_desc *desc)
         ALOGE("SDL_Init failed: %s", SDL_GetError());
         return -1;
     }
-    if (desc && desc->width > 0 && desc->height > 0) {
-        view_w = (float)desc->width;
-        view_h = (float)desc->height;
-    }
+    if (desc && desc->width > 0) display_w = desc->width;
+    if (desc && desc->height > 0) display_h = desc->height;
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
@@ -118,33 +116,44 @@ int plat_video_init(const plat_video_desc *desc)
 
     SDL_GL_SetSwapInterval(desc && desc->vsync ? 1 : 0);
     (void)(desc ? desc->upscale : 0); /* no FSR: Android always renders native */
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glClearColor(0.06f, 0.07f, 0.09f, 1.0f);
+
+    int w = 0, h = 0;
+    SDL_GL_GetDrawableSize(window, &w, &h);
+    video_gl_set_drawable(w, h);
+    if (video_gl_start(0) != 0) {
+        ALOGE("shared renderer init failed (2D program or frame target)");
+        return -1;
+    }
     return 0;
 }
 
-void plat_video_set_view(float width, float height)
-{
-    if (width > 0.0f) view_w = width;
-    if (height > 0.0f) view_h = height;
-}
+SDL_Window *plat_sdl_window(void) { return window; }
 
 void plat_video_begin_frame(void)
 {
     int w = 0, h = 0;
     if (window) SDL_GL_GetDrawableSize(window, &w, &h);
-    glViewport(0, 0, w, h);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    video_gl_set_drawable(w, h);
+    video_gl_frame_begin();
 }
 
 void plat_video_end_frame(void)
 {
-    if (window) SDL_GL_SwapWindow(window);
+    video_gl_frame_end();
+    if (window && video_gl_should_present()) SDL_GL_SwapWindow(window);
+}
+
+int video_set_vsync(int enabled)
+{
+    if (SDL_GL_SetSwapInterval(enabled ? 1 : 0) < 0) return 0;
+    return 1;
 }
 
 void plat_video_shutdown(void)
 {
+    plat_audio_shutdown();
+    plat_input_shutdown();
+    video_gl_shutdown();
     if (context) {
         SDL_GL_DeleteContext(context);
         context = NULL;
@@ -155,4 +164,5 @@ void plat_video_shutdown(void)
     }
     es_major = es_minor = es32 = 0;
     gl_info[0] = 0;
+    SDL_Quit();
 }

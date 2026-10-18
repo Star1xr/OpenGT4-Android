@@ -163,6 +163,24 @@ else()
   target_compile_options(opengt4_career_vehicle PRIVATE -ffp-contract=off -frounding-math)
 endif()
 
+# The race's per-car sound (func_003B5E80/00392640) on the native race's state.
+# Defined above the OPENGT4_LIBS_ONLY return together with the replay state
+# below: the Android target reuses both and only skips the SDL, tools and tests
+# part of this file.
+add_library(opengt4_race_sound STATIC src/core/race_car_sound.c src/core/sound_driver.c)
+target_link_libraries(opengt4_race_sound PUBLIC opengt4_physics opengt4_core)
+if(MSVC)
+  target_compile_options(opengt4_race_sound PRIVATE /fp:strict)
+else()
+  target_compile_options(opengt4_race_sound PRIVATE -ffp-contract=off -frounding-math)
+endif()
+
+# The disc checkpoint a replay/race restores from, shared with the Android
+# build (src/app/disc_checkpoint.c).
+add_library(opengt4_replay_state STATIC src/app/disc_checkpoint.c)
+target_include_directories(opengt4_replay_state PRIVATE src/app)
+target_link_libraries(opengt4_replay_state PUBLIC opengt4_physics)
+
 # Platform storage, including native PNG decoding through miniz.
 add_library(opengt4_platform_common STATIC src/platform/common/file_stdio.c src/platform/common/album_storage.c src/platform/common/jpeg_storage.c)
 target_link_libraries(opengt4_platform_common PRIVATE miniz)
@@ -201,7 +219,7 @@ add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/fsr_source.c
           -P ${CMAKE_SOURCE_DIR}/third_party/fsr1/embed.cmake
   DEPENDS ${CMAKE_SOURCE_DIR}/third_party/fsr1/ffx_a.h ${CMAKE_SOURCE_DIR}/third_party/fsr1/ffx_fsr1.h
           ${CMAKE_SOURCE_DIR}/third_party/fsr1/embed.cmake)
-add_library(opengt4_platform_sdl STATIC src/platform/sdl/plat_sdl.c src/platform/sdl/pad_sdl.c src/platform/sdl/video_gl.c src/platform/sdl/gl.c src/platform/sdl/render3d.c src/platform/sdl/fsr.c
+add_library(opengt4_platform_sdl STATIC src/platform/sdl/plat_sdl.c src/platform/sdl/pad_sdl.c src/platform/sdl/video_gl.c src/platform/sdl/render_gl.c src/platform/sdl/gl.c src/platform/sdl/render3d.c src/platform/sdl/fsr.c
   ${CMAKE_BINARY_DIR}/fsr_source.c
   src/platform/sdl/movie.c src/platform/sdl/showroom.c
   src/platform/sdl/car_model.c src/platform/sdl/race_view.c src/platform/sdl/race_lights.c src/platform/sdl/license_scene.c)
@@ -221,14 +239,8 @@ find_program(OPENGT4_FFMPEG NAMES ffmpeg DOC "FFmpeg executable for menu MPEG-2 
 if(OPENGT4_FFMPEG AND NOT OPENGT4_WINDOWS_GUI)
   target_compile_definitions(opengt4_platform_sdl PRIVATE OPENGT4_FFMPEG="${OPENGT4_FFMPEG}")
 endif()
-# The race's per-car sound (func_003B5E80/00392640) on the native race's state.
-add_library(opengt4_race_sound STATIC src/core/race_car_sound.c src/core/sound_driver.c)
-target_link_libraries(opengt4_race_sound PUBLIC opengt4_physics opengt4_core)
-if(MSVC)
-  target_compile_options(opengt4_race_sound PRIVATE /fp:strict)
-else()
-  target_compile_options(opengt4_race_sound PRIVATE -ffp-contract=off -frounding-math)
-endif()
+# The race's per-car sound is defined above with the other libraries the
+# Android target reuses.
 add_executable(opengt4 src/app/main.c src/app/launcher.c src/app/launcher_config.c src/app/launcher_photos.c src/app/launcher_icons.c src/app/launcher_gallery.c src/app/photo_travel.c src/app/pregrid_audio.c src/app/race_audio.c src/app/loading_screen.c src/app/video_settings.c src/app/save_ui.c src/app/race_game.c)
 target_link_libraries(opengt4 PRIVATE opengt4_race_sound opengt4_career_vehicle opengt4_core opengt4_physics opengt4_platform_sdl opengt4_platform_common miniz SDL2::SDL2main)
 if(WIN32)
@@ -459,9 +471,6 @@ if(OPENGT4_TEST_DISC)
   add_test(NAME controller_closed_option_negative COMMAND controller_menu "${OPENGT4_TEST_DISC}" "${CMAKE_BINARY_DIR}/controller-closed-negative.ini")
   set_tests_properties(controller_closed_option_negative PROPERTIES WILL_FAIL TRUE ENVIRONMENT "GT4_CLOSED_OPTION_NEGATIVE=1")
 endif()
-add_library(opengt4_replay_state STATIC src/app/disc_checkpoint.c)
-target_include_directories(opengt4_replay_state PRIVATE src/app)
-target_link_libraries(opengt4_replay_state PUBLIC opengt4_physics)
 foreach(replay_app opengt4 pregrid_probe license_objects_probe license_menu_probe disc_demo_probe tt_game_probe hud_lines_probe smoke_probe race_inspect_probe)
   target_link_libraries(${replay_app} PRIVATE opengt4_replay_state)
 endforeach()

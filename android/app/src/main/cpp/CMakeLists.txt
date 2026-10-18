@@ -1,16 +1,16 @@
 # OpenGT4 Android native target (arm64-v8a).
 #
-# Phase 1: SDL2 + the platform layers (time/audio/input/files) + the phase 1 boot
-#          binary. Scope: the SDL2 Android context, the ES 3.2 gate and proving
-#          the SAF disc path on a device.
-# Phase 2: the game libraries from the root project are reused here (disc
-#          validation and the launcher's INI options come from the same code as
-#          on the PC). The root project is added with OPENGT4_LIBS_ONLY so it
-#          does not configure a second, static SDL.
-# Phase 3: the shared GLES render sources are added and src/app/main.c replaces
-#          android_boot.c.
-# FSR/upscale sources (third_party/fsr1, fsr.c, fsr_source.c) are deliberately
-# absent from this build.
+# The game program (src/app/main.c) runs on SDL2 with a GLES 3.2 context. The
+# 2D renderer, the scene target and the 3D scene come from the shared sources
+# under src/platform/sdl/ (render_gl.c, render3d.c, gl.c), the same files the
+# desktop build compiles; only the context and the present live in
+# src/platform/android/android_video.c.
+#
+# The Windows-only parts are absent by design: src/app/launcher.c (Win32 GDI,
+# replaced by android_launcher.c), src/app/launcher_photos.c, and the external
+# FFmpeg playback in src/platform/sdl/movie.c (replaced by android_movie.c
+# until the films are ported). FSR/upscale (third_party/fsr1, fsr.c,
+# fsr_source.c) is deliberately absent too.
 cmake_minimum_required(VERSION 3.22)
 project(opengt4_android C)
 
@@ -43,12 +43,30 @@ FetchContent_MakeAvailable(SDL2)
 
 # ---- OpenGT4 ----
 add_library(opengt4 SHARED
-    ${OPENGT4_ROOT}/src/platform/android/android_boot.c
     ${OPENGT4_ROOT}/src/platform/android/android_jni.c
+    ${OPENGT4_ROOT}/src/platform/android/android_launcher.c
+    ${OPENGT4_ROOT}/src/platform/android/android_movie.c
     ${OPENGT4_ROOT}/src/platform/android/android_video.c
     ${OPENGT4_ROOT}/src/platform/sdl/plat_sdl.c
     ${OPENGT4_ROOT}/src/platform/sdl/pad_sdl.c
-    ${OPENGT4_ROOT}/src/app/launcher_config.c)
+    ${OPENGT4_ROOT}/src/platform/sdl/gl.c
+    ${OPENGT4_ROOT}/src/platform/sdl/render_gl.c
+    ${OPENGT4_ROOT}/src/platform/sdl/render3d.c
+    ${OPENGT4_ROOT}/src/platform/sdl/car_model.c
+    ${OPENGT4_ROOT}/src/platform/sdl/race_view.c
+    ${OPENGT4_ROOT}/src/platform/sdl/race_lights.c
+    ${OPENGT4_ROOT}/src/platform/sdl/showroom.c
+    ${OPENGT4_ROOT}/src/platform/sdl/license_scene.c
+    ${OPENGT4_ROOT}/src/app/main.c
+    ${OPENGT4_ROOT}/src/app/launcher_config.c
+    ${OPENGT4_ROOT}/src/app/launcher_gallery.c
+    ${OPENGT4_ROOT}/src/app/race_game.c
+    ${OPENGT4_ROOT}/src/app/race_audio.c
+    ${OPENGT4_ROOT}/src/app/loading_screen.c
+    ${OPENGT4_ROOT}/src/app/pregrid_audio.c
+    ${OPENGT4_ROOT}/src/app/photo_travel.c
+    ${OPENGT4_ROOT}/src/app/video_settings.c
+    ${OPENGT4_ROOT}/src/app/save_ui.c)
 
 target_include_directories(opengt4 PRIVATE
     ${OPENGT4_ROOT}/include
@@ -65,7 +83,11 @@ target_compile_definitions(opengt4 PRIVATE
 # API; only what the linked objects need is pulled out of it.
 target_link_libraries(opengt4 PRIVATE
     SDL2::SDL2
+    opengt4_race_sound
+    opengt4_replay_state
+    opengt4_career_vehicle
     opengt4_core
+    opengt4_physics
     opengt4_platform_common
     miniz
     GLESv3

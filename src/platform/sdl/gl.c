@@ -4,6 +4,15 @@
 #include <string.h>
 #include <stdlib.h>
 
+#ifdef OPENGT4_GLES
+
+/* GLES 3.2 links the entry points directly. The Android port keeps the
+   classic 24-bit depth path, so there is no clip control to enable. */
+int gl_reversed_z;
+int gl_enable_reversed_z(void) { return gl_reversed_z = 0; }
+
+#else
+
 #define OPENGT4_GL_DEFINE(type, name) type name;
 OPENGT4_GL_FUNCS(OPENGT4_GL_DEFINE)
 #undef OPENGT4_GL_DEFINE
@@ -32,6 +41,8 @@ int gl_enable_reversed_z(void)
     glClearDepth(0);
     return 1;
 }
+
+#endif /* OPENGT4_GLES */
 
 static GLuint shader(GLenum kind, const char *source)
 {

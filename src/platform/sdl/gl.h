@@ -1,10 +1,31 @@
 /*
- * OpenGL 3.3 core entry points for the SDL backend. GL 1.1 functions come
- * from the system library (opengl32 on Windows); later ones are loaded at
- * run time through SDL_GL_GetProcAddress by gl_load().
+ * OpenGL entry points shared by the desktop and the Android backends.
+ *
+ * Desktop: GL 3.3 core. GL 1.1 functions come from the system library
+ * (opengl32 on Windows); later ones are loaded at run time through
+ * SDL_GL_GetProcAddress by gl_load().
+ *
+ * Android: GLES 3.2. Its entry points are linked directly, so the table below
+ * stays empty and gl_load() has nothing to load. The drawing and shader code
+ * is the same on both platforms (render_gl.c, render3d.c); only a few calls
+ * and enums differ, and they are mapped here.
  */
 #ifndef OPENGT4_GL_H
 #define OPENGT4_GL_H
+
+#ifdef __ANDROID__
+
+#include <GLES3/gl32.h>
+
+#ifndef OPENGT4_GLES
+#define OPENGT4_GLES 1
+#endif
+/* GLES clears depth with a float; callers only pass the value. */
+#define glClearDepth glClearDepthf
+/* The table is only needed where the functions are resolved at run time. */
+#define OPENGT4_GL_FUNCS(X)
+
+#else
 
 #include <SDL.h>
 #include <SDL_opengl.h>
@@ -72,11 +93,19 @@ OPENGT4_GL_FUNCS(OPENGT4_GL_DECLARE)
 #define glActiveTexture opengt4_glActiveTexture
 #define glBlendColor opengt4_glBlendColor
 
-/* Loads the entry points for the current context. 0 if any is missing. */
+#endif /* __ANDROID__ */
+
+/* Desktop: loads the entry points for the current context; 0 if any is
+   missing. Android: the symbols are linked, nothing to load. */
+#ifdef OPENGT4_GLES
+static inline int gl_load(void) { return 1; }
+#else
 int gl_load(void);
+#endif
 /* Reversed depth (OpenGL 4.5 / ARB_clip_control): far 0, near 1 in a float
    buffer, nearly even precision with distance. 0 keeps the classic
-   [-1, 1] depth in 24 bits. Set once by video_gl after the context. */
+   [-1, 1] depth in 24 bits. The Android port always uses the classic path.
+   Set once by the backend after the context. */
 extern int gl_reversed_z;
 int gl_enable_reversed_z(void);
 #define GL_DEPTH_FUNC_LESS   (gl_reversed_z ? GL_GREATER : GL_LESS)

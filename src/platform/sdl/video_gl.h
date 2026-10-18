@@ -1,10 +1,28 @@
-/* Internal interface between the OpenGL video (video_gl.c) and the 3D
-   renderer of the SDL backend. */
+/* Internal interface between the shared GL renderer (render_gl.c), the video
+   backends (video_gl.c, src/platform/android/android_video.c) and the 3D
+   renderer. */
 #ifndef OPENGT4_VIDEO_GL_H
 #define OPENGT4_VIDEO_GL_H
 
 #include "platform/platform.h"
 #include "gl.h"
+
+/* ---- backend entry points of the shared renderer (render_gl.c) ----
+   The renderer owns the frame target, the MSAA scene target, the batched 2D
+   drawing and the frame readback. It never creates a window or a context:
+   each backend does that, then hands over the drawable size and calls the
+   frame pair. upscale_mode is kept only if a resolver is registered. */
+int  video_gl_start(int upscale_mode);
+void video_gl_set_drawable(int width, int height);
+void video_gl_frame_begin(void);
+void video_gl_frame_end(void);
+/* 0 while an offline capture wants the frame kept off the screen. */
+int  video_gl_should_present(void);
+void video_gl_shutdown(void);
+/* FSR 1 on the desktop (video_gl.c); Android registers none, and the scene is
+   copied at its own size. */
+void video_gl_set_resolver(GLuint (*resolve)(GLuint source, int w, int h, int output_w, int output_h),
+                           int (*available)(void));
 
 /* Draws pending 2D quads (before 3D, captures and state changes). */
 void   video_flush2d(void);
