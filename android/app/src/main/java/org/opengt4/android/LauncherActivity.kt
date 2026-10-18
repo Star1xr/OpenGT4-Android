@@ -102,7 +102,7 @@ class LauncherActivity : ComponentActivity() {
                     onSelect = { pickDisc.launch(arrayOf("*/*")) },
                     onPlay = { play() },
                     onShareLog = { shareLog() },
-                    onTouchMode = { setTouchMode(it) },
+                    onTouchMode = { chooseTouchMode(it) },
                 )
 
                 // Video options: the files are small and no disc is touched.
@@ -151,7 +151,8 @@ class LauncherActivity : ComponentActivity() {
 
     private fun prefs() = getSharedPreferences("controls", MODE_PRIVATE)
 
-    private fun setTouchMode(mode: TouchMode) {
+    /* The property's own setter shares this name in the JVM, so this one differs. */
+    private fun chooseTouchMode(mode: TouchMode) {
         touchMode = mode
         prefs().edit().putString(KEY_TOUCH_MODE, mode.id).apply()
     }
