@@ -8,6 +8,12 @@ static SDL_GameController *pads[2];
 static SDL_Joystick *wheels[2];
 static SDL_Haptic *forces[2];
 static int force_id[2]={-1,-1};
+
+/* On-screen pad policy: the frontend's choice, the devices it already saw and
+   the devices the player has used since. A backend that draws an on-screen
+   pad asks plat_sdl_onscreen_hidden every frame. */
+static int onscreen_mode=PLAT_ONSCREEN_AUTO;
+static unsigned onscreen_known, onscreen_seen;
 static void wheel_close(int port)
 {
  if(forces[port]){SDL_HapticStopAll(forces[port]);SDL_HapticClose(forces[port]);forces[port]=NULL;}
@@ -39,6 +45,28 @@ void plat_input_shutdown(void)
 {for(int p=0;p<2;p++){wheel_close(p);if(pads[p]){SDL_GameControllerClose(pads[p]);pads[p]=NULL;}}}
 int plat_input_is_wheel(int index)
 {if(index<0 || index>1)return 0;plat_sdl_pad(index);return wheels[index]!=NULL;}
+void plat_input_set_onscreen(int mode,unsigned known)
+{
+ if(mode<PLAT_ONSCREEN_AUTO || mode>PLAT_ONSCREEN_OFF)mode=PLAT_ONSCREEN_AUTO;
+ onscreen_mode=mode;onscreen_known=known;onscreen_seen=0;
+}
+void plat_sdl_note_device(unsigned kind)
+{onscreen_seen|=kind;}
+/* Whether an on-screen pad must stay hidden: the player's choice wins, and
+   otherwise a pad, wheel, keyboard or mouse in use does. Nothing shows an
+   on-screen pad on the desktop, so only the app's own launcher and the
+   Android backend read this. */
+int plat_sdl_onscreen_hidden(void)
+{
+ if(onscreen_mode==PLAT_ONSCREEN_ON)return 0;
+ if(onscreen_mode==PLAT_ONSCREEN_OFF)return 1;
+ if((onscreen_known|onscreen_seen)&(PLAT_INPUT_DEVICE_GAMEPAD|PLAT_INPUT_DEVICE_KEYBOARD|PLAT_INPUT_DEVICE_MOUSE))return 1;
+ for(int i=0;i<SDL_NumJoysticks();i++){
+  if(SDL_JoystickIsVirtual(i))continue;
+  if(SDL_IsGameController(i) || SDL_JoystickGetDeviceType(i)==SDL_JOYSTICK_TYPE_WHEEL)return 1;
+ }
+ return 0;
+}
 void plat_input_set_ffb(int index,float torque)
 {
  if(!plat_input_is_wheel(index))return;

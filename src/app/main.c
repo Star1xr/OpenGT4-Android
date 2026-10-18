@@ -1266,6 +1266,8 @@ int main(int argc, char **argv)
     const char *race_course_option=NULL,*race_car_option=NULL;
     char race_car[96]={0},race_course[96]={0};
     const char *input_sequence = NULL;
+    int touch_controls = PLAT_ONSCREEN_AUTO;   /* the launcher's on-screen pad choice */
+    unsigned input_devices = 0;                /* what it found connected: PLAT_INPUT_DEVICE_* */
     int selection_steps = 0, positional = 1;
     for (int i = 1; i < argc; i++) {
         if(!strcmp(argv[i],"--loading-shot") && i+1<argc){loading_shot=argv[++i];continue;}
@@ -1289,6 +1291,19 @@ int main(int argc, char **argv)
         }
         if(!strcmp(argv[i],"--vsync") && i+1<argc){
             const char *mode=argv[++i];if(!strcmp(mode,"on"))video_vsync=1;else if(!strcmp(mode,"off"))video_vsync=0;else return 2;continue;
+        }
+        if(!strcmp(argv[i],"--touch-controls") && i+1<argc){
+            const char *mode=argv[++i];
+            if(!strcmp(mode,"auto"))touch_controls=PLAT_ONSCREEN_AUTO;
+            else if(!strcmp(mode,"on"))touch_controls=PLAT_ONSCREEN_ON;
+            else if(!strcmp(mode,"off"))touch_controls=PLAT_ONSCREEN_OFF;
+            else return 2;
+            continue;
+        }
+        if(!strcmp(argv[i],"--input-devices") && i+1<argc){
+            char *end;long n=strtol(argv[++i],&end,10);
+            if(!*argv[i] || *end || n<0 || n>7)return 2;
+            input_devices=(unsigned)n;continue;
         }
         if(!strcmp(argv[i],"--first-run")){first_run_override=1;continue;}
         if(!strcmp(argv[i],"--intro")){intro_override=1;continue;}
@@ -1386,6 +1401,15 @@ int main(int argc, char **argv)
 
     plat_video_desc desc = { window_w, window_h, window_full, video_vsync, upscale };
     settings.current.video=desc;
+    /* The launcher's own device list (it can see keyboards and mice, the game
+       cannot enumerate either): the on-screen controls are hidden while one of
+       them is in use, unless the player forced them on. */
+    {
+        static const char *const onscreen_names[] = { "auto", "on", "off" };
+        plat_input_set_onscreen(touch_controls, input_devices);
+        fprintf(stderr, "controls: on-screen pad %s, devices 0x%x\n",
+                onscreen_names[touch_controls], input_devices);
+    }
     if (plat_video_init(&desc) != 0) {
         fprintf(stderr, "cannot open a window: %s\n", SDL_GetError());
         return 1;

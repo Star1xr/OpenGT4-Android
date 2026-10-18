@@ -1,6 +1,8 @@
 package org.opengt4.android
 
+import android.content.Context
 import android.content.Intent
+import android.hardware.input.InputManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -47,6 +49,15 @@ class LauncherActivity : ComponentActivity() {
     /** The game keeps its log in private storage; the chooser is the way out. */
     private var logAvailable by mutableStateOf(false)
 
+    /** Gamepads, wheels, keyboards and mice the system reports right now. */
+    private var deviceList by mutableStateOf<List<ConnectedDevice>>(emptyList())
+
+    /** What the player wants the on-screen pad to do; Auto unless chosen. */
+    private var touchMode by mutableStateOf(TouchMode.AUTO)
+
+    private val inputManager by lazy { getSystemService(Context.INPUT_SERVICE) as InputManager }
+    private val deviceListener = InputDevices.listener { refreshDevices() }
+
     private val videoFile: String get() = File(filesDir, "video.ini").absolutePath
     private val savesDir: String get() = File(filesDir, "saves").absolutePath
     private val logFile: File get() = File(filesDir, "logs/opengt4.log")
@@ -64,6 +75,7 @@ class LauncherActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         banner = runCatching { NativeBridge.nativeVersion() }.getOrDefault("")
+        touchMode = TouchMode.of(prefs().getString(KEY_TOUCH_MODE, null))
         // A saved disc stays ready across launches while the permission lasts.
         sync(DiscHolder.reopenSaved(this))
 
@@ -85,9 +97,12 @@ class LauncherActivity : ComponentActivity() {
                     },
                     banner = banner,
                     logAvailable = logAvailable,
+                    deviceList = deviceList,
+                    touchMode = touchMode,
                     onSelect = { pickDisc.launch(arrayOf("*/*")) },
                     onPlay = { play() },
                     onShareLog = { shareLog() },
+                    onTouchMode = { setTouchMode(it) },
                 )
 
                 // Video options: the files are small and no disc is touched.
@@ -121,6 +136,24 @@ class LauncherActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         logAvailable = logFile.length() > 0
+        inputManager.registerInputDeviceListener(deviceListener, null)
+        refreshDevices()
+    }
+
+    override fun onPause() {
+        inputManager.unregisterInputDeviceListener(deviceListener)
+        super.onPause()
+    }
+
+    private fun refreshDevices() {
+        deviceList = InputDevices.list(this)
+    }
+
+    private fun prefs() = getSharedPreferences("controls", MODE_PRIVATE)
+
+    private fun setTouchMode(mode: TouchMode) {
+        touchMode = mode
+        prefs().edit().putString(KEY_TOUCH_MODE, mode.id).apply()
     }
 
     private fun sync(ok: Boolean) {
@@ -169,7 +202,12 @@ class LauncherActivity : ComponentActivity() {
     private fun play() {
         if (!DiscHolder.ready || validated == false) return
         appendSessionHeader()
-        startActivity(Intent(this, GameActivity::class.java))
+        // The device list is read now: the game follows it for its own pad.
+        val intent = Intent(this, GameActivity::class.java).apply {
+            putExtra(GameActivity.EXTRA_TOUCH_MODE, touchMode.id)
+            putExtra(GameActivity.EXTRA_INPUT_DEVICES, InputDevices.flags(deviceList))
+        }
+        startActivity(intent)
     }
 
     /** Device and version, so a shared log needs no other context. */
@@ -196,5 +234,9 @@ class LauncherActivity : ComponentActivity() {
             }
             startActivity(Intent.createChooser(send, getString(R.string.share_log)))
         }
+    }
+
+    private companion object {
+        const val KEY_TOUCH_MODE = "touch_mode"
     }
 }

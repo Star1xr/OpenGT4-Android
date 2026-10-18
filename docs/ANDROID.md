@@ -76,6 +76,15 @@ never move, stretch or shrink it.
 A controller connected over Bluetooth or USB takes the first player, and the
 on-screen pad hides while it is there. Remove it and the pad returns.
 
+The launcher lists the devices the system reports (gamepad or wheel, keyboard
+and mouse) and follows them as they are plugged in and out. The on-screen pad
+is used only while none of them is connected; the On-screen pad buttons in the
+launcher force it on or off instead. A keyboard drives with the arrows or with
+W, A, S and D, shifts with Q and E, brakes with Space and pauses with Esc.
+
+The game writes what it decided to the log ("controls: on-screen pad auto,
+devices 0x1"), so a missing or unexpected pad is easy to place.
+
 ## Layout
 
     android/               Gradle project: Compose launcher, GameActivity, JNI bridge

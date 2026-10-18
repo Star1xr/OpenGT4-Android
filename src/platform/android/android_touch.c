@@ -7,6 +7,10 @@
  * game's own key configuration all stay untouched. Only the hit testing and
  * the drawing live here.
  *
+ * Whether the pad is there at all is the launcher's choice and the devices the
+ * system reports: a pad, a wheel, a keyboard or a mouse wins the port (see
+ * plat_sdl_onscreen_hidden in src/platform/sdl/pad_sdl.c).
+ *
  * Nothing of the game is copied: every symbol is generated at start (shapes and
  * a 5x7 caption font), so the repository carries no image and no disc data is
  * read. The pad is drawn in framebuffer pixels (video_ui_pixels_begin), one
@@ -455,6 +459,22 @@ static void fingers_drop(void)
     for (int i = 0; i < PAD_FINGERS; i++) fingers[i].key = -1;
 }
 
+/* A key the player drives or works the menus with. Android's own buttons
+   (volume, back, media) reach SDL as keys as well, and none of them means a
+   keyboard is plugged in. */
+static int keyboard_key(SDL_Keycode sym)
+{
+    switch (sym) {
+    case SDLK_w: case SDLK_a: case SDLK_s: case SDLK_d:
+    case SDLK_q: case SDLK_e: case SDLK_c: case SDLK_v:
+    case SDLK_LEFT: case SDLK_RIGHT: case SDLK_UP: case SDLK_DOWN:
+    case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_ESCAPE: case SDLK_SPACE: case SDLK_TAB:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 /* Every event stays in the queue: the game reads the same fingers for its own
    purposes. Only the state this pad needs is copied out. */
 static int touch_watch(void *user, SDL_Event *e)
@@ -463,6 +483,21 @@ static int touch_watch(void *user, SDL_Event *e)
     switch (e->type) {
     case SDL_FINGERDOWN: finger_down((int)e->tfinger.fingerId, e->tfinger.x, e->tfinger.y); break;
     case SDL_FINGERUP: finger_up((int)e->tfinger.fingerId); break;
+    /* A key or a mouse button is a device: SDL has no way to list either, so
+       their use is what the pad can go on. SDL also reports a finger as a
+       mouse (SDL_TOUCH_MOUSEID), which is not one. */
+    case SDL_KEYDOWN:
+        if (keyboard_key(e->key.keysym.sym)) plat_sdl_note_device(PLAT_INPUT_DEVICE_KEYBOARD);
+        break;
+    case SDL_MOUSEBUTTONDOWN:
+        if (e->button.which != SDL_TOUCH_MOUSEID) plat_sdl_note_device(PLAT_INPUT_DEVICE_MOUSE);
+        break;
+    case SDL_MOUSEMOTION:
+        if (e->motion.which != SDL_TOUCH_MOUSEID) plat_sdl_note_device(PLAT_INPUT_DEVICE_MOUSE);
+        break;
+    case SDL_MOUSEWHEEL:
+        if (e->wheel.which != SDL_TOUCH_MOUSEID) plat_sdl_note_device(PLAT_INPUT_DEVICE_MOUSE);
+        break;
     case SDL_APP_WILLENTERBACKGROUND:
     case SDL_APP_DIDENTERBACKGROUND: fingers_drop(); break;
     case SDL_WINDOWEVENT:
@@ -570,18 +605,16 @@ static void pad_detach(void)
     pad_on = 0;
 }
 
-/* A connected controller always wins the first player's port, so the on-screen
-   pad exists only while the device has none. */
+/* A controller, a wheel, a keyboard or a mouse always wins the first player's
+   port, so the on-screen pad exists only while none of them is there. The
+   choice (auto, on or off) is the launcher's and lives in pad_sdl.c. */
 static void pad_sync(void)
 {
-    int physical = 0;
-    for (int i = 0; i < SDL_NumJoysticks() && !physical; i++)
-        if (!SDL_JoystickIsVirtual(i) &&
-            (SDL_IsGameController(i) || SDL_JoystickGetDeviceType(i) == SDL_JOYSTICK_TYPE_WHEEL)) physical = 1;
-    if (physical && pad_on) {
-        ALOGW("touch pad: off, a controller is connected");
+    int hidden = plat_sdl_onscreen_hidden();
+    if (hidden && pad_on) {
+        ALOGW("touch pad: off, another input device is in use");
         pad_detach();
-    } else if (!physical && !pad_on && !pad_failed) pad_attach();
+    } else if (!hidden && !pad_on && !pad_failed) pad_attach();
 }
 
 void plat_android_touch_init(void)

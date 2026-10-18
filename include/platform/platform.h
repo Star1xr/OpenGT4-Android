@@ -122,6 +122,18 @@ void plat_input_set_ffb(int index, float torque);
 int plat_input_is_wheel(int index);
 void plat_input_shutdown(void);
 
+/* On-screen (touch) controls, for the backends that draw them. The frontend
+   sets the policy once at start: AUTO hides them while a pad, a wheel, a
+   keyboard or a mouse is in use, ON keeps them, OFF drops them. `known` is
+   what the frontend has already found connected, so a backend can count the
+   kinds it cannot enumerate itself. Backends without on-screen controls
+   ignore both values. */
+enum { PLAT_ONSCREEN_AUTO, PLAT_ONSCREEN_ON, PLAT_ONSCREEN_OFF };
+#define PLAT_INPUT_DEVICE_GAMEPAD  1u
+#define PLAT_INPUT_DEVICE_KEYBOARD 2u
+#define PLAT_INPUT_DEVICE_MOUSE    4u
+void plat_input_set_onscreen(int mode, unsigned known);
+
 /* ---- app lifecycle ---- */
 int  plat_should_quit(void);
 /* Synchronous dialog (presented inside the game by the app). confirm=0: OK; confirm=1: Yes/No.

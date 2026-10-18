@@ -34,4 +34,11 @@ SDL_Window *plat_sdl_window(void);
    caller frees them. Size of the window's drawable. */
 unsigned char *plat_sdl_read_pixels(int *width, int *height);
 unsigned char *plat_sdl_read_view(int *width, int *height);   /* the game's area only, without the window's bars */
+
+/* On-screen controls policy (pad_sdl.c): the frontend sets it through
+   plat_input_set_onscreen, a device the player actually uses is noted through
+   plat_sdl_note_device, and this answers whether a backend's on-screen pad
+   must stay hidden. */
+void plat_sdl_note_device(unsigned kind);
+int plat_sdl_onscreen_hidden(void);
 #endif

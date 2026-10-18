@@ -25,7 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import org.opengt4.android.ConnectedDevice
+import org.opengt4.android.DeviceKind
+import org.opengt4.android.InputDevices
 import org.opengt4.android.R
+import org.opengt4.android.TouchMode
 import java.util.Locale
 
 /**
@@ -45,9 +49,12 @@ fun LauncherScreen(
     errorText: String?,
     banner: String,
     logAvailable: Boolean,
+    deviceList: List<ConnectedDevice>,
+    touchMode: TouchMode,
     onSelect: () -> Unit,
     onPlay: () -> Unit,
     onShareLog: () -> Unit,
+    onTouchMode: (TouchMode) -> Unit,
 ) {
     Scaffold { inner ->
         Column(
@@ -132,6 +139,69 @@ fun LauncherScreen(
                 Text(stringResource(R.string.disc_play))
             }
 
+            // The on-screen pad is the only pad until a device takes over, so
+            // the devices the system reports and the player's own choice are
+            // both here.
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.controls_section),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (deviceList.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.devices_none),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    } else {
+                        deviceList.forEach { device ->
+                            Text(
+                                text = deviceLabel(device),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.touch_section),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        for (mode in TouchMode.values()) {
+                            if (mode == touchMode) {
+                                Button(onClick = { onTouchMode(mode) }) {
+                                    Text(touchModeLabel(mode))
+                                }
+                            } else {
+                                OutlinedButton(onClick = { onTouchMode(mode) }) {
+                                    Text(touchModeLabel(mode))
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        text = stringResource(
+                            if (padUsed(deviceList, touchMode)) R.string.pad_active
+                            else R.string.pad_hidden
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
             // The game's log from the last run, when there is one.
             if (logAvailable) {
                 OutlinedButton(onClick = onShareLog, modifier = Modifier.fillMaxWidth()) {
@@ -170,6 +240,33 @@ fun LauncherScreen(
         }
     }
 }
+
+private fun padUsed(devices: List<ConnectedDevice>, mode: TouchMode): Boolean = when (mode) {
+    TouchMode.ON -> true
+    TouchMode.OFF -> false
+    TouchMode.AUTO -> InputDevices.flags(devices) == 0
+}
+
+@Composable
+private fun deviceLabel(device: ConnectedDevice): String {
+    val kind = stringResource(
+        when (device.kind) {
+            DeviceKind.GAMEPAD -> R.string.device_gamepad
+            DeviceKind.KEYBOARD -> R.string.device_keyboard
+            else -> R.string.device_mouse
+        }
+    )
+    return "$kind: ${device.name}"
+}
+
+@Composable
+private fun touchModeLabel(mode: TouchMode): String = stringResource(
+    when (mode) {
+        TouchMode.AUTO -> R.string.touch_auto
+        TouchMode.ON -> R.string.touch_on
+        TouchMode.OFF -> R.string.touch_off
+    }
+)
 
 private fun formatBytes(bytes: Long): String {
     val gb = bytes.toDouble() / (1024.0 * 1024.0 * 1024.0)

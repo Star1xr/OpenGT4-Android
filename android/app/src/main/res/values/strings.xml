@@ -24,4 +24,16 @@
 
     <string name="share_log">Share log</string>
     <string name="share_log_subject">OpenGT4 log</string>
+
+    <string name="controls_section">Controls</string>
+    <string name="devices_none">No controller, keyboard or mouse: the on-screen pad is used.</string>
+    <string name="device_gamepad">Gamepad or wheel</string>
+    <string name="device_keyboard">Keyboard</string>
+    <string name="device_mouse">Mouse</string>
+    <string name="touch_section">On-screen pad</string>
+    <string name="touch_auto">Auto</string>
+    <string name="touch_on">On</string>
+    <string name="touch_off">Off</string>
+    <string name="pad_active">The on-screen pad is used.</string>
+    <string name="pad_hidden">The on-screen pad stays hidden while a device is connected.</string>
 </resources>
