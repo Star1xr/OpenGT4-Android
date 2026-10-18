@@ -42,12 +42,18 @@ void video_set_menu_pacing(int enabled)
     if (menu_pacing != enabled) { menu_pacing = enabled; menu_deadline = 0; }
 }
 /* Diagnostic only: what the frame costs. The submission time is measured every
-   frame (GL calls are asynchronous, so this is the CPU's own cost), the GPU is
-   synchronized only now and then, so a diagnostic never becomes the reason the
-   frame is slow. */
+   frame (GL calls are asynchronous, so this is the CPU's own cost), the 3D
+   scene's own share of it is timed between video_begin_scene and
+   video_end_scene, and the GPU is synchronized only now and then, so a
+   diagnostic never becomes the reason the frame is slow. The game's update
+   (physics, AI, audio) is whatever is left between the frame period and the
+   submission time. */
 static int profile_frames, profile_draws, profile_quads;
 static uint64_t profile_start, profile_cpu, profile_gpu, profile_window;
+static uint64_t profile_scene_start, profile_scene;
 static unsigned profile_count, profile_gpu_samples;
+static unsigned profile_3d_draws, profile_3d_triangles;
+static uint64_t profile_3d_ns;
 /* plat_time_ns() is already in nanoseconds, so the report window is a constant:
    the same five seconds the frame rate line uses. */
 static const uint64_t profile_report_ns = 5000000000ull;
@@ -56,7 +62,16 @@ void video_set_profile(int enabled)
 {
     profile_frames = enabled != 0;
     profile_count = profile_draws = profile_quads = profile_gpu_samples = 0;
-    profile_cpu = profile_gpu = profile_window = 0;
+    profile_cpu = profile_gpu = profile_window = profile_scene = 0;
+    profile_3d_draws = profile_3d_triangles = 0;
+    profile_3d_ns = 0;
+}
+
+void video_profile_note_mesh(unsigned draws, unsigned triangles, uint64_t ns)
+{
+    profile_3d_draws += draws;
+    profile_3d_triangles += triangles;
+    profile_3d_ns += ns;
 }
 
 /* P: optional native-resolution filming, independent of the window.
@@ -482,12 +497,17 @@ void video_gl_frame_end(void)
         if (done - profile_window >= profile_report_ns) {
             double n = profile_count ? (double)profile_count : 1.0;
             double g = profile_gpu_samples ? (double)profile_gpu_samples : 1.0;
-            fprintf(stderr, "video profile: cpu %.2f ms, gpu %.2f ms/frame, %u draws, %u quads per frame, %.1f fps\n",
-                    profile_cpu / 1e6 / n, profile_gpu / 1e6 / g,
+            fprintf(stderr, "video profile: cpu %.2f ms, scene %.2f ms, 3D %.2f ms, gpu %.2f ms/frame,"
+                            " %u draws, %u triangles, 2D %u draws, %u quads per frame, %.1f fps\n",
+                    profile_cpu / 1e6 / n, profile_scene / 1e6 / n, profile_3d_ns / 1e6 / n,
+                    profile_gpu / 1e6 / g,
+                    (unsigned)(profile_3d_draws / n), (unsigned)(profile_3d_triangles / n),
                     (unsigned)(profile_draws / n), (unsigned)(profile_quads / n),
                     (n - 1.0) * 1e9 / (double)(done - profile_window));
             profile_count = profile_draws = profile_quads = profile_gpu_samples = 0;
-            profile_cpu = profile_gpu = 0;
+            profile_cpu = profile_gpu = profile_scene = 0;
+            profile_3d_draws = profile_3d_triangles = 0;
+            profile_3d_ns = 0;
             profile_window = done;
         }
     }
@@ -648,11 +668,15 @@ void video_begin_scene(void)
 #endif
     glViewport(0, 0, w, h); glClearColor(0, 0, 0, 1); glClearDepth(GL_DEPTH_FAR); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     fb_w = w; fb_h = h; layout_view(); scene_active = 1;
+    if (profile_frames) profile_scene_start = plat_time_ns();
 }
 
 void video_end_scene(void)
 {
     if (!scene_active) return;
+    /* Everything the frame spends drawing the 3D scene, meshes and effects:
+       the rest of the submission time is the 2D layer and the frame's end. */
+    if (profile_frames) profile_scene += plat_time_ns() - profile_scene_start;
     video_flush2d(); glDisable(GL_SCISSOR_TEST);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, scene_resolve);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, scene_tex, 0);

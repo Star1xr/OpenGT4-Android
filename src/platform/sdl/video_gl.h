@@ -28,9 +28,13 @@ void video_gl_set_resolver(GLuint (*resolve)(GLuint source, int w, int h, int ou
 void   video_flush2d(void);
 /* Bound frontend rendering to its native 60 Hz; race timing is separate. */
 void video_set_menu_pacing(int enabled);
-/* Per frame cost in the log: frame submission time every frame, GPU time on a
-   sample of frames. Off unless a backend asks for it. */
+/* Per frame cost in the log: submission time every frame, the 3D scene's own
+   share, the meshes' own share, and GPU time on a sample of frames. Off unless
+   a backend asks for it. The 3D renderer hands one mesh's counts and its own
+   nanoseconds over as the mesh ends, so the window reports real draw and
+   triangle counts per frame and what the game's update is left with. */
 void video_set_profile(int enabled);
+void video_profile_note_mesh(unsigned draws, unsigned triangles, uint64_t ns);
 /* Opt-in offline movie export: one original 60 Hz update per real frame. */
 int video_export_fixed_step(void);
 /* Menu 2D maps to the whole PS2 framebuffer; race HUD has wide layout. */

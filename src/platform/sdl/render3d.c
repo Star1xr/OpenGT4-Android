@@ -157,6 +157,9 @@ static GLuint wheel_program,wheel_vao;
 static struct {GLint points,extent,source,scanmask,copy;} WU;
 static r3d_stats frame_stats;
 r3d_stats r3d_frame_stats(void){return frame_stats;}
+/* What one mesh costs the CPU: its own begin/end pair, handed to the frame
+   profile as it ends. */
+static uint64_t mesh_start_ns;
 static struct {
     GLint rot, pos, cam, r, u, f, focal, jitter, clip, mode, flat, reflect, specular;
     GLint nlights,ldir,lamb,ldif,lspe,lspec_scale,lvertex,shadow_alpha,shadow_rgb,mirror,cscale,untex,envk;
@@ -592,6 +595,7 @@ void r3d_mesh_destroy(r3d_mesh *mesh)
 
 void r3d_begin(float x, float y, float w, float h, const tex1_image *environment)
 {
+    mesh_start_ns = plat_time_ns();
     memset(&frame_stats,0,sizeof frame_stats);
     video_flush2d();
     if (!r3d_available()) return;
@@ -824,6 +828,9 @@ void r3d_environment_changed(void) { env_dirty = 1; }
 
 void r3d_end(void)
 {
+    /* The profile's own numbers: a mesh resets frame_stats when it starts, so
+       its draws and its own time are handed over here, as it ends. */
+    video_profile_note_mesh(frame_stats.draws, frame_stats.triangles, plat_time_ns() - mesh_start_ns);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glDisable(GL_POLYGON_OFFSET_FILL);
