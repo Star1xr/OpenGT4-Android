@@ -43,9 +43,12 @@ object InputDevices {
     fun list(context: Context): List<ConnectedDevice> {
         val manager = context.getSystemService(Context.INPUT_SERVICE) as? InputManager
             ?: return emptyList()
-        return manager.inputDeviceIds.mapNotNull { id ->
-            manager.getInputDevice(id)?.let { device(id, it) }
+        val found = mutableListOf<ConnectedDevice>()
+        for (id in manager.inputDeviceIds) {
+            val source = manager.getInputDevice(id) ?: continue
+            kindOf(source)?.let { found += ConnectedDevice(id, source.name ?: "?", it) }
         }
+        return found
     }
 
     /** The platform flags for a list of devices. */
@@ -58,11 +61,6 @@ object InputDevices {
             override fun onInputDeviceRemoved(deviceId: Int) = onChanged()
             override fun onInputDeviceChanged(deviceId: Int) = onChanged()
         }
-
-    private fun device(id: Int, device: InputDevice): ConnectedDevice? {
-        val kind = kindOf(device) ?: return null
-        return ConnectedDevice(id, device.name ?: "?", kind)
-    }
 
     /** A gamepad or wheel, a keyboard or a mouse; null for anything else. */
     private fun kindOf(device: InputDevice): Int? {
