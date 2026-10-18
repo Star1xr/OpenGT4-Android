@@ -10,9 +10,11 @@
  * 3.2, so the draw and shader paths have one source.
  *
  * There is no FSR/upscale path here. When no resolver is registered (the
- * Android build) the scene is copied at its own size; the desktop registers
- * FSR 1 in video_gl.c, so the third-party upscaler never enters the Android
- * build.
+ * Android build) the scene is copied and scaled up bilinearly at the end of
+ * the frame; the desktop registers FSR 1 in video_gl.c, so the third-party
+ * upscaler never enters the Android build. The scene target is the drawable by
+ * default, and a backend may ask for a smaller one (video_set_render_size) and
+ * for fewer samples (video_set_samples).
  */
 #include "platform/platform.h"
 #include "video_gl.h"
@@ -87,6 +89,9 @@ static int batch_kind, ui_filter = 0;
 static float text_sharpness = 0;
 static float batch_fixed_alpha = -1;
 static int upscale;
+/* Platform render size and sample count for 3D scenes: 0 keeps the drawable
+   size and 4x MSAA, which is what the desktop build always uses. */
+static int render_w, render_h, render_samples;
 
 static void capture_framebuffer(void)
 {
@@ -527,6 +532,7 @@ void video_gl_shutdown(void)
     view_w = 640; view_h = 480; scale_x = scale_y = 1; off_x = off_y = 0;
     content_width = content_x = side_margin = 0;
     frame_presented = 0; upscale = 0;
+    render_w = render_h = render_samples = 0;
 }
 
 void video_set_menu_projection(int enabled)
@@ -544,20 +550,48 @@ int video_set_upscale(int mode)
 }
 int video_fsr_available(void) { return resolve_available ? resolve_available() : 0; }
 
+/* The size the GPU draws 3D scenes at, in pixels: the platform's resolution
+   setting (video.ini on Android) instead of the drawable size. 0, 0 restores
+   the drawable size. The scene is blitted up to the output, so the platform
+   chooses how much detail it wants to pay for. */
+void video_set_render_size(int width, int height)
+{
+    video_flush2d();
+    render_w = width > 0 ? width : 0;
+    render_h = height > 0 ? height : 0;
+}
+
+/* 1 turns multisampling off, which a backend without the headroom wants. */
+void video_set_samples(int samples)
+{
+    video_flush2d();
+    render_samples = samples > 0 ? samples : 0;
+}
+
 void video_begin_scene(void)
 {
     video_flush2d(); output_w = fb_w; output_h = fb_h;
     static const float ratios[] = { 1, 1.3f, 1.5f, 1.7f, 2 };
     int mode = upscale >= 0 && upscale <= 4 ? upscale : 0;
     if (mode && !video_fsr_available()) mode = 0;
-    int w = (int)(output_w / ratios[mode] + .5f), h = (int)(output_h / ratios[mode] + .5f);
-    GLint max_samples = 1; glGetIntegerv(GL_MAX_SAMPLES, &max_samples); int samples = max_samples >= 4 ? 4 : 1;
+    int w, h;
+    if (render_w && render_h) { w = render_w; h = render_h; }
+    else { w = (int)(output_w / ratios[mode] + .5f); h = (int)(output_h / ratios[mode] + .5f); }
+    int samples = render_samples > 0 ? render_samples : 4;
+    GLint max_samples = 1; glGetIntegerv(GL_MAX_SAMPLES, &max_samples);
+    if (samples > max_samples) samples = (int)max_samples;
+    if (samples < 1) samples = 1;
     if (!scene_fbo) { glGenFramebuffers(1, &scene_fbo); glGenFramebuffers(1, &scene_resolve); glGenRenderbuffers(1, &scene_color); glGenRenderbuffers(1, &scene_depth); glGenTextures(1, &scene_tex); }
     if (w != scene_w || h != scene_h || samples != scene_samples) {
+        GLenum depth = gl_reversed_z ? 0x8CAD : GL_DEPTH24_STENCIL8;
+        /* One sample needs the plain storage call: some drivers refuse a
+           multisample renderbuffer with a single sample. */
         glBindRenderbuffer(GL_RENDERBUFFER, scene_color);
-        glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA8, w, h);
+        if (samples > 1) glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA8, w, h);
+        else glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, w, h);
         glBindRenderbuffer(GL_RENDERBUFFER, scene_depth);
-        glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, gl_reversed_z ? 0x8CAD : GL_DEPTH24_STENCIL8, w, h);
+        if (samples > 1) glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, depth, w, h);
+        else glRenderbufferStorage(GL_RENDERBUFFER, depth, w, h);
         glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, scene_color);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, scene_depth);
@@ -566,7 +600,8 @@ void video_begin_scene(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         scene_w = w; scene_h = h; scene_samples = samples;
-        printf("scene: %dx%d -> %dx%d, MSAA %dx, %s\n", w, h, output_w, output_h, samples, mode ? "FSR 1" : "native");
+        printf("scene: %dx%d -> %dx%d, MSAA %dx, %s\n", w, h, output_w, output_h, samples,
+               mode ? "FSR 1" : (w != output_w || h != output_h ? "bilinear" : "native"));
     }
     glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo); glDisable(GL_SCISSOR_TEST);
     /* GLES multisamples the bound target itself; there is no cap to enable. */

@@ -8,6 +8,7 @@ project (GPLv3, see NOTICE).
 
 - arm64-v8a, minSdk 26, OpenGL ES 3.2 with a fallback to ES 3.0.
 - Your own Gran Turismo 4 disc image is read where it is. Nothing is copied or extracted.
+- 3D scenes are drawn at the Resolution setting of video.ini (1280x960 by default) and scaled up to the screen, without multisampling. Raise it for sharpness, lower it for speed.
 - SDL2 for the window, input and audio, and a Jetpack Compose launcher for disc selection.
 - No game data and no upscaling code in the repository.
 
@@ -47,8 +48,8 @@ Android sends the game's output nowhere, so the game writes it to
 `logs/opengt4.log` in its own files directory. The launcher's Share log button
 sends that file, and the session before it stays as `logs/opengt4.log.prev`, so
 a crash does not take the older one with it. The log holds the GLES version, the
-driver, the shader messages, the scene size and, every five seconds, the frame
-rate with the worst frame of that window.
+driver, the shader messages, the size 3D scenes are drawn at and, every five
+seconds, the frame rate with the worst frame of that window.
 
 ## Reading the disc
 

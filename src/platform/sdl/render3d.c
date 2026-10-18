@@ -15,32 +15,57 @@
 
 #ifdef OPENGT4_GLES
 /* GLES takes the ES GLSL dialect; the bodies below are shared. */
-#define GLSL_HEADER "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n"
+#define GLSL_VERSION "#version 300 es\n"
+#define GLSL_PRECISION "precision highp float;\nprecision highp int;\nprecision highp sampler2D;\n"
 #else
-#define GLSL_HEADER "#version 330 core\n"
+#define GLSL_VERSION "#version 330 core\n"
+#define GLSL_PRECISION ""
 #endif
 
-/* Same prolog idea as render_gl.c, plus the interpolation qualifier GLES may
-   not have: without the NV extension the fog varying interpolates smoothly,
-   which only softens its edge a little. */
-static char *glsl_source(const char *body)
+/* Same prolog idea as render_gl.c, plus the interpolation qualifier of the fog
+   varying. noperspective is a reserved word in ESSL: GL_NV_shader_noperspective_
+   interpolation restores it, but only for a shader whose prolog asks for the
+   extension. Without it the varying interpolates smoothly, which softens the
+   fog edge a little; desktop GL has the qualifier in core. */
+static char *glsl_source(const char *body, int noperspective)
 {
-    const char *qualifier = gl_noperspective_supported() ? "noperspective" : "smooth";
-    size_t size = strlen(GLSL_HEADER) + strlen(body) + strlen(qualifier) + 32;
+    const char *extension = "";
+#ifdef OPENGT4_GLES
+    if (noperspective) extension = "#extension GL_NV_shader_noperspective_interpolation : enable\n";
+#endif
+    const char *qualifier = noperspective ? "noperspective" : "smooth";
+    size_t size = strlen(GLSL_VERSION) + strlen(GLSL_PRECISION) + strlen(extension) +
+                  strlen(body) + strlen(qualifier) + 48;
     char *source = malloc(size);
     if (!source) return NULL;
-    snprintf(source, size, "%s#define NOPERSPECTIVE %s\n%s", GLSL_HEADER, qualifier, body);
+    snprintf(source, size, "%s%s%s#define NOPERSPECTIVE %s\n%s",
+             GLSL_VERSION, extension, GLSL_PRECISION, qualifier, body);
     return source;
 }
+
+/* A driver that advertises the extension and still rejects the keyword leaves
+   the 3D renderer without any program, so every program after it is built
+   smoothly instead. */
+static int smooth_only;
 
 /* Both stages get the prolog; the driver copies the text, so it is freed. */
 static GLuint glsl_program(const char *vertex, const char *fragment)
 {
-    char *v = glsl_source(vertex), *f = glsl_source(fragment);
-    GLuint program = 0;
-    if (v && f) program = gl_program(v, f);
+    int noperspective = !smooth_only && gl_noperspective_supported();
+    char *v = glsl_source(vertex, noperspective), *f = glsl_source(fragment, noperspective);
+    GLuint program = (v && f) ? gl_program(v, f) : 0;
     free(v);
     free(f);
+    if (!program && noperspective) {
+        smooth_only = 1;
+        fprintf(stderr, "3D shaders: driver refused noperspective, using smooth varyings\n");
+        fflush(stderr);
+        v = glsl_source(vertex, 0);
+        f = glsl_source(fragment, 0);
+        program = (v && f) ? gl_program(v, f) : 0;
+        free(v);
+        free(f);
+    }
     return program;
 }
 

@@ -35,6 +35,12 @@ void video_set_menu_projection(int enabled);
 GLuint video_texture_id(const plat_texture *t);
 /* Native or FSR 1 ultra quality / quality / balanced / performance (0..4). */
 int video_set_upscale(int mode);
+/* Size the GPU draws 3D scenes at, and its sample count. 0 keeps the drawable
+   size and 4x MSAA, which is what the desktop backend wants; a backend with a
+   resolution setting of its own (Android) renders the scene there and lets the
+   blit scale it to the output. */
+void video_set_render_size(int width, int height);
+void video_set_samples(int samples);
 /* Original display ratio: 0 = 4:3, 1 = 16:9. */
 void video_set_aspect(int widescreen);
 float video_projection_x(void);

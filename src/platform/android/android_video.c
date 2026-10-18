@@ -8,6 +8,8 @@
  *
  * There is no FSR/upscale path (pure port): desc->upscale is ignored and no
  * scene resolver is registered, so video_end_scene copies the scene as is.
+ * desc->width/height (the game's Resolution setting) is the size 3D scenes are
+ * drawn at, and the scene is blitted up to the panel from there.
  */
 #include "platform/platform.h"
 #include "android_platform.h"
@@ -132,13 +134,14 @@ int plat_video_init(const plat_video_desc *desc)
 
     const int nv_nopersp = gl_noperspective_supported();
     snprintf(gl_info, sizeof gl_info, "ES %d.%d | %s | %s | noperspective:%s",
-             es_major, es_minor, glstr(GL_VENDOR), glstr(GL_RENDERER), nv_nopersp ? "NV" : "smooth");
+             es_major, es_minor, glstr(GL_VENDOR), glstr(GL_RENDERER), nv_nopersp ? "NV advertised" : "smooth");
     ALOGI("GLES %d.%d | GLSL %s", es_major, es_minor, glstr(GL_SHADING_LANGUAGE_VERSION));
     ALOGI("vendor=%s renderer=%s", glstr(GL_VENDOR), glstr(GL_RENDERER));
-    ALOGI("noperspective: %s", nv_nopersp ? "NV extension" : "no, smooth varyings");
+    /* The extension may still be refused at compile time; render3d.c says so. */
+    ALOGI("noperspective: %s", nv_nopersp ? "NV extension advertised" : "no, smooth varyings");
 
     SDL_GL_SetSwapInterval(desc && desc->vsync ? 1 : 0);
-    (void)(desc ? desc->upscale : 0); /* no FSR: Android always renders native */
+    (void)(desc ? desc->upscale : 0); /* no FSR: upscaling stays unused here */
 
     int w = 0, h = 0;
     SDL_GL_GetDrawableSize(window, &w, &h);
@@ -147,6 +150,15 @@ int plat_video_init(const plat_video_desc *desc)
         ALOGE("shared renderer init failed (2D program or frame target)");
         return -1;
     }
+
+    /* The game's Resolution setting (video.ini width/height, the same field the
+       PC settings page calls Resolution) is the size the GPU draws 3D scenes
+       at; the blit scales it to the panel. MSAA stays off: at panel size its
+       resolves cost more than they are worth on a phone GPU. */
+    video_set_render_size(desc ? desc->width : 0, desc ? desc->height : 0);
+    video_set_samples(1);
+    ALOGI("render: drawable %dx%d, scene %dx%d, MSAA off", w, h,
+          desc && desc->width > 0 ? desc->width : w, desc && desc->height > 0 ? desc->height : h);
     return 0;
 }
 
