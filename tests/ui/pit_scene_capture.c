@@ -21,7 +21,12 @@ static void match(void*user,const char*name,int directory,uint32_t bytes){
 int main(int argc,char**argv){
  CHECK(argc>=4 && argc<=6);int negative=argc==6 && !strcmp(argv[5],"--negative");
  int memory_negative=argc==6 && !strcmp(argv[5],"--negative-memory");plat_video_desc desc={1280,896,0,0,0};CHECK(!plat_video_init(&desc));
- SDL_HideWindow(plat_sdl_window());CHECK(!_putenv_s("OPENGT4_RACE_SNAPSHOT",argv[2]));
+ SDL_HideWindow(plat_sdl_window());
+#ifdef _WIN32
+ CHECK(!_putenv_s("OPENGT4_RACE_SNAPSHOT",argv[2]));
+#else
+ CHECK(!setenv("OPENGT4_RACE_SNAPSHOT",argv[2],1));
+#endif
  FILE*input=fopen(argv[2],"rb");CHECK(input);uint8_t*ram=malloc(0x2000000);CHECK(ram && fread(ram,1,0x2000000,input)==0x2000000);fclose(input);
  uint32_t captured_world=0;for(uint32_t p=0x1000000;p<0x1ff0000;p+=16)if(word(ram+p+0x80)==0x67a078){captured_world=p;break;}CHECK(captured_world);
  uint32_t cond=word(ram+captured_world+0x70),course_object=word(ram+cond+0xcbd8),runway=word(ram+word(ram+course_object+4)+0xdc);
@@ -68,7 +73,12 @@ int main(int argc,char**argv){
   }
  }
  for(unsigned entry=0;entry<(unsigned)gt4_race_run_cars(g->run);entry++){float look[9],fov;if(gt4_pit_camera(g->pit_crew+entry,look,&fov)){printf("camera look fov %.9g\n",fov);for(unsigned i=0;i<9;i++)printf("look %u %.9g EE %.9g\n",i,look[i],GT4_F32(pit+4+i*4));}}
- free(package);race_game_update(g,0);CHECK(!_putenv_s("OPENGT4_RACE_SNAPSHOT",""));
+ free(package);race_game_update(g,0);
+#ifdef _WIN32
+ CHECK(!_putenv_s("OPENGT4_RACE_SNAPSHOT",""));
+#else
+ unsetenv("OPENGT4_RACE_SNAPSHOT");
+#endif
  {float look[9],fov,eye[3],rows[9],projection[3];if(gt4_pit_camera(g->pit_crew,look,&fov)){
   printf("after update: choice %d begin %.9g clock %.9g\n",g->pit_crew[0].camera_choice,g->pit_crew[0].camera_begin,gt4_license_motion_time(g->pit_crew[0].motion,6));
   CHECK(race_view_get_camera(g->view,eye,rows,projection));for(unsigned j=0;j<3;j++){printf("render eye %u %.9g wanted %.9g\n",j,eye[j],look[j]);CHECK(fabsf(eye[j]-look[j])<=.00005f);}
