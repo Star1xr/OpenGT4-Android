@@ -781,6 +781,19 @@ void video_viewport(float x, float y, float w, float h, int *vx, int *vy, int *v
     if (x == 0 && w == view_w) { *vx = (int)(content_x + .5f); *vw = (int)(content_width + .5f); }
 }
 
+/* The other direction: framebuffer pixels (rows bottom up, as the viewport
+   uses them) to the virtual screen the game draws in. This is the exact
+   inverse of what the 2D path does with a point, so a touch lands on the quad
+   it looks like, whatever the panel, the letterbox or the projection does.
+   Returns 0 while there is no valid layout. */
+int video_screen_to_view(float px, float py, float *x, float *y)
+{
+    if (scale_x <= 0 || scale_y <= 0) return 0;
+    *x = (px - off_x) / scale_x;
+    *y = view_h - (py - off_y) / scale_y;
+    return 1;
+}
+
 void video_ui_panel(float y, float h)
 {
     video_flush2d(); ui_clip_on = 0;

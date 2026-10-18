@@ -340,21 +340,17 @@ void plat_android_touch_draw(void)
 
 /* ---- the touch surface ---- */
 
-/* The game's UI space (640x448) in framebuffer pixels: the same transform the
-   game's own 2D uses, so the pad lands on the game image at any panel size. */
-static int touch_to_view(float nx, float ny, float *gx, float *gy)
+/* A touch, in the game's UI space (640x448 by default). SDL normalizes a
+   finger against the surface; the renderer's own inverse maps the pixel back,
+   so the pad lands where the game's 2D does at any panel size. */
+static int touch_to_view(float nx, float ny, float *x, float *y)
 {
     SDL_Window *window = plat_sdl_window();
-    int vx, vy, vw, vh, dw = 1, dh = 1;
+    int dw = 1, dh = 1;
     if (!window) return 0;
     SDL_GL_GetDrawableSize(window, &dw, &dh);
-    video_viewport(0, 0, 640, 448, &vx, &vy, &vw, &vh);
-    if (vw <= 0 || vh <= 0) return 0;
-    /* SDL normalizes the finger against the surface; framebuffer rows run
-       bottom up, so the row is mirrored here. */
-    *gx = (nx * dw - vx) * 640.0f / vw;
-    *gy = ((float)(vy + vh) - (1.0f - ny) * dh) * 448.0f / vh;
-    return *gx >= 0 && *gx < 640 && *gy >= 0 && *gy < 448;
+    /* Framebuffer rows run bottom up, so the row is mirrored here. */
+    return video_screen_to_view(nx * dw, (1.0f - ny) * dh, x, y);
 }
 
 /* The key whose centre is nearest, with a little room around the ink so a
