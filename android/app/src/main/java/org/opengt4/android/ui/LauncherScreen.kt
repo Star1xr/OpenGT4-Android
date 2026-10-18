@@ -85,7 +85,7 @@ fun LauncherScreen(
                     )
                     if (discBytes > 0) {
                         Text(
-                            text = formatBytes(discBytes) + " · " + stringResource(R.string.disc_ready),
+                            text = formatBytes(discBytes),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -139,7 +139,7 @@ fun LauncherScreen(
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                text = "GPLv3 · Based on OpenGT4",
+                text = "GPLv3, based on OpenGT4",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
