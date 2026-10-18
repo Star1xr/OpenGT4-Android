@@ -34,7 +34,7 @@ void video_set_menu_pacing(int enabled);
    nanoseconds over as the mesh ends, so the window reports real draw and
    triangle counts per frame and what the game's update is left with. */
 void video_set_profile(int enabled);
-void video_profile_note_mesh(unsigned draws, unsigned triangles, uint64_t ns);
+void video_profile_note_mesh(unsigned draws, unsigned triangles, unsigned joinable, unsigned date, uint64_t ns);
 /* Opt-in offline movie export: one original 60 Hz update per real frame. */
 int video_export_fixed_step(void);
 /* Menu 2D maps to the whole PS2 framebuffer; race HUD has wide layout. */

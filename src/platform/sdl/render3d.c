@@ -830,7 +830,9 @@ void r3d_end(void)
 {
     /* The profile's own numbers: a mesh resets frame_stats when it starts, so
        its draws and its own time are handed over here, as it ends. */
-    video_profile_note_mesh(frame_stats.draws, frame_stats.triangles, plat_time_ns() - mesh_start_ns);
+    video_profile_note_mesh(frame_stats.draws, frame_stats.triangles,
+                            frame_stats.joinable_groups, frame_stats.date_groups,
+                            plat_time_ns() - mesh_start_ns);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glDisable(GL_POLYGON_OFFSET_FILL);
@@ -1075,6 +1077,12 @@ static void draw_mesh(r3d_mesh *mesh, const r3d_view *view,const r3d_lights *lig
         else glUniform3f(U.fog,-1,0,0);
     }
     float fog_scale=view->unlit && view->color_scale>0?view->color_scale:1.f;
+    /* Diagnostic: how many groups could have gone out in the call before them.
+       A course is a thousand small groups a frame, so this says whether joining
+       neighbouring groups is worth doing before it is done. */
+    int join_end=-1,join_tex=-1,join_flags=0;
+    const r3d_texture *join_prev=NULL;
+    gt4_draw_state join_state;memset(&join_state,0,sizeof join_state);
     glUniform2f(U.focal_px, view->focal * projection_x, fy);
     glUniform4f(U.viewport, (float)vp[0], (float)vp[1], (float)vp[2], (float)vp[3]);
     glUniform1i(U.tex, 0); glUniform1i(U.dest, 1); glUniform1i(U.envtex, 2);
@@ -1150,6 +1158,7 @@ static void draw_mesh(r3d_mesh *mesh, const r3d_view *view,const r3d_lights *lig
         uni1i(&uc.date, U.date, s->destination_test);
         uni1i(&uc.date_bit, U.date_bit, s->destination_bit);
         if (s->destination_test) {
+            frame_stats.date_groups++;
             /* 00455708, commands 29/31: DATE reads the preceding draws'
                framebuffer alpha. The PC MSAA target must be resolved first:
                glCopyTexSubImage2D rejects a multisampled read framebuffer,
@@ -1183,6 +1192,18 @@ static void draw_mesh(r3d_mesh *mesh, const r3d_view *view,const r3d_lights *lig
             /* set behind the cache's back, so the next group sets its own */
             draw_cache_forget();
         }
+        /* Diagnostic: would this group have fitted into the call before it?
+           Same material, same texture, its vertices right after them: one
+           glDrawArrays carries both and draws the same pixels. A skipped group
+           breaks the chain by itself, its range sits in between. */
+        if (!view->ghost && !s->destination_test && view->wheel_blur <= 1) {
+            int flags = (g->reflection ? 1 : 0) | (g->flat ? 2 : 0) | (g->specular ? 4 : 0) |
+                        ((int)g->lamp << 3) | ((int)g->blend_enabled << 6);
+            if (join_end == g->first && join_prev == t && join_tex == (int)tex_id &&
+                join_flags == flags && !memcmp(&join_state, s, sizeof *s)) frame_stats.joinable_groups++;
+            join_end = g->first + g->count; join_prev = t; join_tex = (int)tex_id;
+            join_flags = flags; join_state = *s;
+        } else join_end = -1;
         glDrawArrays(GL_TRIANGLES, g->first, g->count);
         frame_stats.draws++;frame_stats.triangles+=g->count/3;
         if (view->ghost) continue;

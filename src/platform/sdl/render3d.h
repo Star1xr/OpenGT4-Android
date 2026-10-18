@@ -59,7 +59,11 @@ typedef struct {
 } r3d_view;
 
 int       r3d_available(void);
-typedef struct { unsigned draws,triangles,culled_groups,wheel_passes,wheel_cache_hits; } r3d_stats;
+typedef struct { unsigned draws,triangles,culled_groups,wheel_passes,wheel_cache_hits;
+                 /* Diagnostics: groups whose material and vertex range match the
+                    group drawn just before them, so one call could carry both,
+                    and groups that needed the destination alpha copied first. */
+                 unsigned joinable_groups,date_groups; } r3d_stats;
 r3d_stats r3d_frame_stats(void);
 /* Upload (main thread, GL context current). The model is not kept. */
 r3d_mesh *r3d_mesh_create(const gt4_model *m);

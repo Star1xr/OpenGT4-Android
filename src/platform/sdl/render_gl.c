@@ -42,17 +42,19 @@ void video_set_menu_pacing(int enabled)
     if (menu_pacing != enabled) { menu_pacing = enabled; menu_deadline = 0; }
 }
 /* Diagnostic only: what the frame costs. The submission time is measured every
-   frame (GL calls are asynchronous, so this is the CPU's own cost), the 3D
-   scene's own share of it is timed between video_begin_scene and
-   video_end_scene, and the GPU is synchronized only now and then, so a
-   diagnostic never becomes the reason the frame is slow. The game's update
-   (physics, AI, audio) is whatever is left between the frame period and the
-   submission time. */
+   frame (GL calls are asynchronous, so this is the CPU's own cost); the scene's
+   section, which the game opens around a race's own update and its 3D, is timed
+   between video_begin_scene and video_end_scene; and each mesh hands its own
+   begin/end pair over as it ends. What is left of the scene is the game's
+   update and the HUD, what is left of the frame is the rest of the frontend,
+   and the GPU is synchronized only now and then, so a diagnostic never becomes
+   the reason the frame is slow. */
 static int profile_frames, profile_draws, profile_quads;
 static uint64_t profile_start, profile_cpu, profile_gpu, profile_window;
 static uint64_t profile_scene_start, profile_scene;
 static unsigned profile_count, profile_gpu_samples;
 static unsigned profile_3d_draws, profile_3d_triangles;
+static unsigned profile_3d_joinable, profile_3d_date;
 static uint64_t profile_3d_ns;
 /* plat_time_ns() is already in nanoseconds, so the report window is a constant:
    the same five seconds the frame rate line uses. */
@@ -64,13 +66,16 @@ void video_set_profile(int enabled)
     profile_count = profile_draws = profile_quads = profile_gpu_samples = 0;
     profile_cpu = profile_gpu = profile_window = profile_scene = 0;
     profile_3d_draws = profile_3d_triangles = 0;
+    profile_3d_joinable = profile_3d_date = 0;
     profile_3d_ns = 0;
 }
 
-void video_profile_note_mesh(unsigned draws, unsigned triangles, uint64_t ns)
+void video_profile_note_mesh(unsigned draws, unsigned triangles, unsigned joinable, unsigned date, uint64_t ns)
 {
     profile_3d_draws += draws;
     profile_3d_triangles += triangles;
+    profile_3d_joinable += joinable;
+    profile_3d_date += date;
     profile_3d_ns += ns;
 }
 
@@ -498,15 +503,17 @@ void video_gl_frame_end(void)
             double n = profile_count ? (double)profile_count : 1.0;
             double g = profile_gpu_samples ? (double)profile_gpu_samples : 1.0;
             fprintf(stderr, "video profile: cpu %.2f ms, scene %.2f ms, 3D %.2f ms, gpu %.2f ms/frame,"
-                            " %u draws, %u triangles, 2D %u draws, %u quads per frame, %.1f fps\n",
+                            " %u draws (%u joinable, %u date), %u triangles, 2D %u draws, %u quads per frame, %.1f fps\n",
                     profile_cpu / 1e6 / n, profile_scene / 1e6 / n, profile_3d_ns / 1e6 / n,
                     profile_gpu / 1e6 / g,
-                    (unsigned)(profile_3d_draws / n), (unsigned)(profile_3d_triangles / n),
+                    (unsigned)(profile_3d_draws / n), (unsigned)(profile_3d_joinable / n),
+                    (unsigned)(profile_3d_date / n), (unsigned)(profile_3d_triangles / n),
                     (unsigned)(profile_draws / n), (unsigned)(profile_quads / n),
                     (n - 1.0) * 1e9 / (double)(done - profile_window));
             profile_count = profile_draws = profile_quads = profile_gpu_samples = 0;
             profile_cpu = profile_gpu = profile_scene = 0;
             profile_3d_draws = profile_3d_triangles = 0;
+            profile_3d_joinable = profile_3d_date = 0;
             profile_3d_ns = 0;
             profile_window = done;
         }

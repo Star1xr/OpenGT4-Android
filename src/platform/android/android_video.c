@@ -207,9 +207,10 @@ static void frame_stats(void)
     double seconds = (now - window_start) / frequency;
     r3d_stats drew = r3d_frame_stats();
     fprintf(stderr, "frame: %u in %.1fs, %.1f fps, mean %.1f ms, max %.1f ms,"
-                    " last frame %u draws, %u triangles, %u groups culled\n",
+                    " last mesh %u draws, %u triangles, %u groups culled,"
+                    " %u joinable, %u date\n",
             frames, seconds, frames / seconds, seconds * 1000.0 / frames, worst * 1000.0 / frequency,
-            drew.draws, drew.triangles, drew.culled_groups);
+            drew.draws, drew.triangles, drew.culled_groups, drew.joinable_groups, drew.date_groups);
     fflush(stderr);
     window_start = now; frames = 0; worst = 0;
 }
