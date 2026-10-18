@@ -15,6 +15,7 @@
 #include "career_original.h"
 #include "course.h"
 #include "inflate.h"
+#include "specdb.h"
 #include "spectables.h"
 #include "vol.h"
 

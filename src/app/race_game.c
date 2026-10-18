@@ -19,6 +19,7 @@
 #include "license_image.h"
 #include "car_model.h"
 #include "career_license.h"
+#include "career_original.h"
 #include "career_parts.h"
 #include "logger.h"
 #include "race_result.h"
