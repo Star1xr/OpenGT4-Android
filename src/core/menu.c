@@ -173,6 +173,8 @@ static void jukebox_store(menu *m);
 static void album_music_bind(menu *m);
 static void album_music_store(menu *m);
 static int album_draw(void *,const ui_widget *,float,float,float,float,float);
+/* The script host calls it above its definition further down the file. */
+static int to_int(ah_val v);
 
 static ah_obj *widget_module(menu *m, ui_widget *w);
 static void set_focus(menu *m, ui_widget *w);

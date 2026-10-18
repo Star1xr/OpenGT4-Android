@@ -237,6 +237,8 @@ static race_command command,command_2p;
 static uint32_t player,player_2p;
 
 static race_game *playing;   /* the race whose player reads the controller */
+/* The camera update calls it above its definition further down the file. */
+static int watched_car(const race_game *g);
 static int host_read(void *u, uint32_t car, uint8_t *cmd, const uint8_t *ev)
 {
     race_game *g = playing;
