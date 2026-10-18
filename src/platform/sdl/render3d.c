@@ -166,6 +166,75 @@ static struct {
     GLint fog,fogcol,grade_rgb,grade;
 } U;
 
+/* What the group draws below set, and what they were last set to. The course
+   alone can be a thousand groups a frame, and a group repeats the material of
+   the one before it far more often than it changes it: every glUniform* and
+   every blend, depth and cull call is driver work. A value equal to the last
+   one is not sent again. GL state is shared with the 2D layer, the layer
+   passes and the wheel accumulation, so both of these are cleared at the start
+   of every mesh (and when the program is rebuilt). */
+static struct {
+    int flat, specular, reflect, has_tex, nearest, mip_count, minify;
+    int cc, tfx, native, atest, afunc, date, date_bit, pass;
+    float aref, fade, fogcol[3], texsize[2];
+    int size[2], wrap[2], region[4];
+} uc;
+static struct {
+    int cull, face, blend, sf, df, eq, depth, dmask, cmask[4];
+    float bcolor;
+    unsigned tex;   /* unit 0, ~0u for nothing bound */
+} sc;
+
+/* Values no field above can take, so the first group sets everything. */
+static void draw_cache_forget(void)
+{
+    const int bad = 0x7fffffff;
+    const float badf = -1e30f;
+    uc.flat=uc.specular=uc.reflect=uc.has_tex=uc.nearest=bad;
+    uc.mip_count=uc.minify=uc.cc=uc.tfx=uc.native=bad;
+    uc.atest=uc.afunc=uc.date=uc.date_bit=uc.pass=bad;
+    uc.aref=uc.fade=badf;
+    for(int k=0;k<3;k++)uc.fogcol[k]=badf;
+    uc.texsize[0]=uc.texsize[1]=badf;
+    uc.size[0]=uc.size[1]=uc.wrap[0]=uc.wrap[1]=bad;
+    uc.region[0]=uc.region[1]=uc.region[2]=uc.region[3]=bad;
+    sc.cull=sc.face=sc.blend=sc.sf=sc.df=sc.eq=sc.depth=sc.dmask=-1;
+    sc.cmask[0]=sc.cmask[1]=sc.cmask[2]=sc.cmask[3]=-1;
+    sc.bcolor=badf;
+    sc.tex=~0u;
+}
+
+static void uni1i(int *slot, GLint loc, int value)
+{
+    if (*slot == value) return;
+    glUniform1i(loc, value); *slot = value;
+}
+static void uni1f(float *slot, GLint loc, float value)
+{
+    if (*slot == value) return;
+    glUniform1f(loc, value); *slot = value;
+}
+static void uni2f(float *slot, GLint loc, float a, float b)
+{
+    if (slot[0] == a && slot[1] == b) return;
+    glUniform2f(loc, a, b); slot[0] = a; slot[1] = b;
+}
+static void uni2i(int *slot, GLint loc, int a, int b)
+{
+    if (slot[0] == a && slot[1] == b) return;
+    glUniform2i(loc, a, b); slot[0] = a; slot[1] = b;
+}
+static void uni3f(float *slot, GLint loc, float a, float b, float c)
+{
+    if (slot[0] == a && slot[1] == b && slot[2] == c) return;
+    glUniform3f(loc, a, b, c); slot[0] = a; slot[1] = b; slot[2] = c;
+}
+static void uni4i(int *slot, GLint loc, int a, int b, int c, int d)
+{
+    if (slot[0] == a && slot[1] == b && slot[2] == c && slot[3] == d) return;
+    glUniform4i(loc, a, b, c, d); slot[0] = a; slot[1] = b; slot[2] = c; slot[3] = d;
+}
+
 static const char *vs =
     "layout(location=0) in vec3 a_pos; layout(location=1) in vec3 a_normal; layout(location=2) in vec2 a_uv;\n"
     "layout(location=3) in vec3 a_rgb; layout(location=4) in vec3 a_amb; layout(location=5) in vec3 a_spec;\n"
@@ -326,6 +395,8 @@ int r3d_available(void)
     UNI(colorop,"u_colorop");UNI(colormul,"u_colormul");UNI(coloradd,"u_coloradd");
     UNI(fog,"u_fog");UNI(fogcol,"u_fogcol");UNI(grade_rgb,"u_grade_rgb");UNI(grade,"u_grade");
 #undef UNI
+    /* A fresh program holds no uniform values: the per-group cache is empty. */
+    draw_cache_forget();
     return 1;
 }
 
@@ -766,7 +837,7 @@ void r3d_end(void)
    coefficient of Cs and of Cd is a*C+b; map it to GL factors. */
 static void set_blend(const r3d_group *g)
 {
-    if (!g->blend_enabled) { glDisable(GL_BLEND); return; }
+    int on = g->blend_enabled;
     unsigned e = g->state.blend, A = e & 3, B = (e >> 2) & 3, C = (e >> 4) & 3, D = (e >> 6) & 3;
     int sa = (A == 0) - (B == 0), sb = D == 0, da = (A == 1) - (B == 1), db = D == 1;
     GLenum c = C == 0 ? GL_SRC_ALPHA : C == 1 ? GL_DST_ALPHA : GL_CONSTANT_ALPHA;
@@ -786,8 +857,12 @@ static void set_blend(const r3d_group *g)
     if (sneg && !dneg) eq = GL_FUNC_REVERSE_SUBTRACT;
     else if (dneg && !sneg) eq = GL_FUNC_SUBTRACT;
     else if (sneg && dneg) { sf = GL_ZERO; df = GL_ZERO; }
+    float color = fminf(1, g->state.fixed_alpha / 128.f);
+    if (sc.blend == on && sc.sf == (int)sf && sc.df == (int)df && sc.eq == (int)eq && sc.bcolor == color) return;
+    sc.blend = on; sc.sf = (int)sf; sc.df = (int)df; sc.eq = (int)eq; sc.bcolor = color;
+    if (!on) { glDisable(GL_BLEND); return; }
     glEnable(GL_BLEND);
-    glBlendColor(0, 0, 0, fminf(1, g->state.fixed_alpha / 128.f));
+    glBlendColor(0, 0, 0, color);
     /* colour by the equation; the alpha channel stores the source coefficient */
     glBlendEquationSeparate(eq, GL_FUNC_ADD);
     glBlendFuncSeparate(sf, df, GL_ONE, GL_ZERO);
@@ -803,24 +878,31 @@ static void depth_coeffs(float n, float f, float k[2])
 
 static void set_depth(const gt4_draw_state *s, int depth_write)
 {
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_POLYGON_OFFSET_FILL);
-    if (!s->depth_test) glDepthFunc(GL_ALWAYS);
-    else if (s->depth_func == 0) glDepthFunc(GL_NEVER);
-    else if (s->depth_func == 1) glDepthFunc(GL_ALWAYS);
+    GLenum func;
+    if (!s->depth_test) func = GL_ALWAYS;
+    else if (s->depth_func == 0) func = GL_NEVER;
+    else if (s->depth_func == 1) func = GL_ALWAYS;
     /* Model command 25 (00456000) -> 004A26F0 +00..+1C:
        D_00629DD8 maps API indices 0,1,2,3 to GS ZTST 0,1,3,2.
        2 is strict; 3 includes equality, independently of ZMSK.
        Do not add an estimated offset to read-only passes. */
-    else if (s->depth_func == 2) glDepthFunc(GL_DEPTH_FUNC_LESS);
-    else glDepthFunc(GL_DEPTH_FUNC_LEQUAL);
-    glDepthMask(depth_write ? GL_TRUE : GL_FALSE);
+    else if (s->depth_func == 2) func = GL_DEPTH_FUNC_LESS;
+    else func = GL_DEPTH_FUNC_LEQUAL;
+    int write = depth_write != 0;
+    if (sc.depth == (int)func && sc.dmask == write) return;
+    sc.depth = (int)func; sc.dmask = write;
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(func);
+    glDepthMask(write ? GL_TRUE : GL_FALSE);
 }
 
 static void set_masks(uint32_t mask, int color, int alpha)
 {
-    glColorMask(color && ((mask & 0xff) != 0xff), color && (((mask >> 8) & 0xff) != 0xff),
-                color && (((mask >> 16) & 0xff) != 0xff), alpha && (((mask >> 24) & 0xff) != 0xff));
+    int m[4] = { color && ((mask & 0xff) != 0xff), color && (((mask >> 8) & 0xff) != 0xff),
+                 color && (((mask >> 16) & 0xff) != 0xff), alpha && (((mask >> 24) & 0xff) != 0xff) };
+    if (sc.cmask[0] == m[0] && sc.cmask[1] == m[1] && sc.cmask[2] == m[2] && sc.cmask[3] == m[3]) return;
+    memcpy(sc.cmask, m, sizeof m);
+    glColorMask(m[0], m[1], m[2], m[3]);
 }
 
 /* 00453BB0, 00453A58 and 004A6668: render two rotations in alternating
@@ -913,7 +995,14 @@ static void draw_mesh(r3d_mesh *mesh, const r3d_view *view,const r3d_lights *lig
 {
     if (!mesh || !program) return;
     float planes[6][4];r3d_frustum(view,projection_x,planes);
-    int cull=getenv("OPENGT4_DISABLE_CULL")==NULL;
+    /* Read once: these are checked per group and getenv walks the environment. */
+    static int cull_flag=-1,no_reflect,only_reflect;
+    if(cull_flag<0) {
+        cull_flag=getenv("OPENGT4_DISABLE_CULL")==NULL;
+        no_reflect=getenv("OPENGT4_NO_REFLECT")!=NULL;
+        only_reflect=getenv("OPENGT4_ONLY_REFLECT")!=NULL;
+    }
+    int cull=cull_flag;
     float wheel_angle=view->wheel_interval;
     if(view->wheel_blur>1) {
         /* 004522D8 +A8..+C0: exp(-20 * screen displacement). The PC
@@ -984,8 +1073,12 @@ static void draw_mesh(r3d_mesh *mesh, const r3d_view *view,const r3d_lights *lig
     glUniform1i(U.tex, 0); glUniform1i(U.dest, 1); glUniform1i(U.envtex, 2);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, dest_tex);
     glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, env_tex);
+    glActiveTexture(GL_TEXTURE0);
     glUniform2i(U.envsize, env_w, env_h);
-    glEnable(GL_CULL_FACE);
+    /* Whatever ran before this mesh (the 2D layer, a layer pass, the wheel
+       accumulation) may have changed the shared GL state: forget it here. */
+    draw_cache_forget();
+    glDisable(GL_POLYGON_OFFSET_FILL);
     glFrontFace((view->mirror!=0) != (view->screen_reflect!=0) ? GL_CW : GL_CCW);   /* 00341E50 projection reflection, plus optional floor reflection */
     /* 00396F00 +34..+78 submits only the Vls0 list, in its stored order.
        Distinct detailed/coarse meshes may occupy the same surface. */
@@ -1003,8 +1096,8 @@ static void draw_mesh(r3d_mesh *mesh, const r3d_view *view,const r3d_lights *lig
             if(!r3d_bounds_visible(planes,bound_lo,bound_hi)){frame_stats.culled_groups++;continue;}
         }
         const gt4_draw_state *s = &g->state;
-        if(g->reflection && getenv("OPENGT4_NO_REFLECT"))continue;
-        if(!g->reflection && getenv("OPENGT4_ONLY_REFLECT"))continue;
+        if(g->reflection && no_reflect)continue;
+        if(!g->reflection && only_reflect)continue;
         int texture=view->wheel_blur==1 && g->wheel_blur_texture?g->wheel_blur_texture-1:g->texture;
         const r3d_texture *t = texture >= 0 && texture < mesh->ntextures ? &mesh->textures[texture] : NULL;
         r3d_texture accumulated;
@@ -1013,35 +1106,42 @@ static void draw_mesh(r3d_mesh *mesh, const r3d_view *view,const r3d_lights *lig
             accumulated.scale=1;accumulated.nearest=0;accumulated.wrap_u=accumulated.wrap_v=1;t=&accumulated;
         }
         /* the draw's own fog colour (a GS colour, doubled with the course's) or the scene's */
-        if(s->fog_override)glUniform3f(U.fogcol,s->fog_rgb[0]/255.f*fog_scale,s->fog_rgb[1]/255.f*fog_scale,s->fog_rgb[2]/255.f*fog_scale);
-        else glUniform3f(U.fogcol,view->fog_rgb[0],view->fog_rgb[1],view->fog_rgb[2]);
+        if(s->fog_override)uni3f(uc.fogcol,U.fogcol,s->fog_rgb[0]/255.f*fog_scale,s->fog_rgb[1]/255.f*fog_scale,s->fog_rgb[2]/255.f*fog_scale);
+        else uni3f(uc.fogcol,U.fogcol,view->fog_rgb[0],view->fog_rgb[1],view->fog_rgb[2]);
         /* the lit brake lamps (car callback 0, branch 1) come out at their
            texels in the user's PCSX2 savestate (Ka, Laguna Seca: 255,8,10
            where the lights give 85): drawn without the scene's lights.
            A: the code that makes them so is not found */
-        glUniform1i(U.flat, g->flat || g->lamp == 2 || view->shadow || view->unlit);
-        glUniform1i(U.specular, g->specular && !view->shadow);
-        glUniform1i(U.reflect, g->reflection);
-        glUniform1i(U.has_tex, t != NULL);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, t ? t->id : 0);
+        uni1i(&uc.flat, U.flat, g->flat || g->lamp == 2 || view->shadow || view->unlit);
+        uni1i(&uc.specular, U.specular, g->specular && !view->shadow);
+        uni1i(&uc.reflect, U.reflect, g->reflection);
+        uni1i(&uc.has_tex, U.has_tex, t != NULL);
+        unsigned tex_id = t ? (unsigned)t->id : 0u;
+        if (sc.tex != tex_id) { sc.tex = tex_id; glBindTexture(GL_TEXTURE_2D, tex_id); }
         if (t) {
             int k = t->scale;   /* addressing in the upscaled texture's texels */
-            glUniform2f(U.texsize, (float)(t->tex_w * k), (float)(t->tex_h * k));
-            glUniform2i(U.size, t->width * k, t->height * k);
-            glUniform2i(U.wrap, t->wrap_u, t->wrap_v);
-            glUniform4i(U.region, t->min_u * k, t->max_u * k + k - 1, t->min_v * k, t->max_v * k + k - 1);
-            glUniform1i(U.cc, t->color_component); glUniform1i(U.tfx, t->texture_function); glUniform1i(U.native, t->native);
-            glUniform1i(U.nearest, t->nearest ? k : 0);
-            glUniform1i(U.mip_count,t->mip_count);glUniform1i(U.minify,t->minify);
+            uni2f(uc.texsize, U.texsize, (float)(t->tex_w * k), (float)(t->tex_h * k));
+            uni2i(uc.size, U.size, t->width * k, t->height * k);
+            uni2i(uc.wrap, U.wrap, t->wrap_u, t->wrap_v);
+            uni4i(uc.region, U.region, t->min_u * k, t->max_u * k + k - 1, t->min_v * k, t->max_v * k + k - 1);
+            uni1i(&uc.cc, U.cc, t->color_component);
+            uni1i(&uc.tfx, U.tfx, t->texture_function);
+            uni1i(&uc.native, U.native, t->native);
+            uni1i(&uc.nearest, U.nearest, t->nearest ? k : 0);
+            uni1i(&uc.mip_count, U.mip_count, t->mip_count);
+            uni1i(&uc.minify, U.minify, t->minify);
         }
-        if (s->cull == 0) glDisable(GL_CULL_FACE);
-        else { glEnable(GL_CULL_FACE); glCullFace(s->cull == 1 ? GL_BACK : GL_FRONT); }
-        glUniform1i(U.atest, s->alpha_test);
-        glUniform1i(U.afunc, s->alpha_func);
-        glUniform1f(U.aref, s->alpha_ref);
-        glUniform1i(U.date, s->destination_test);
-        glUniform1i(U.date_bit, s->destination_bit);
+        int face = s->cull == 1 ? GL_BACK : GL_FRONT;
+        if (sc.cull != (s->cull != 0) || sc.face != face) {
+            sc.cull = s->cull != 0; sc.face = face;
+            if (s->cull == 0) glDisable(GL_CULL_FACE);
+            else { glEnable(GL_CULL_FACE); glCullFace(face); }
+        }
+        uni1i(&uc.atest, U.atest, s->alpha_test);
+        uni1i(&uc.afunc, U.afunc, s->alpha_func);
+        uni1f(&uc.aref, U.aref, s->alpha_ref);
+        uni1i(&uc.date, U.date, s->destination_test);
+        uni1i(&uc.date_bit, U.date_bit, s->destination_bit);
         if (s->destination_test) {
             /* 00455708, commands 29/31: DATE reads the preceding draws'
                framebuffer alpha. The PC MSAA target must be resolved first:
@@ -1061,18 +1161,20 @@ static void draw_mesh(r3d_mesh *mesh, const r3d_view *view,const r3d_lights *lig
         if (view->ghost == 1 && g->blend_enabled) continue;
         set_blend(g);
         /* pass 1: fragments passing the alpha test (all of them without a test) */
-        glUniform1i(U.pass, 1);
+        uni1i(&uc.pass, U.pass, 1);
         set_depth(s, s->depth_write);
         set_masks(s->color_mask, 1, 1);
         /* the ghost's own see-through layers: their share of the colour
            (by the source alpha) scaled with it */
-        glUniform1f(U.fade, view->ghost == 2 && g->blend_enabled ? view->ghost_alpha : 1.f);
+        uni1f(&uc.fade, U.fade, view->ghost == 2 && g->blend_enabled ? view->ghost_alpha : 1.f);
         if (view->ghost == 1) set_masks(0, 0, 0);
         else if (view->ghost == 2 && !g->blend_enabled) {
             glEnable(GL_BLEND);glBlendColor(0, 0, 0, view->ghost_alpha);
             glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
             glBlendFuncSeparate(GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA, GL_ONE, GL_ZERO);
             glDepthFunc(GL_DEPTH_FUNC_LEQUAL);glDepthMask(GL_FALSE);
+            /* set behind the cache's back, so the next group sets its own */
+            draw_cache_forget();
         }
         glDrawArrays(GL_TRIANGLES, g->first, g->count);
         frame_stats.draws++;frame_stats.triangles+=g->count/3;
@@ -1080,7 +1182,7 @@ static void draw_mesh(r3d_mesh *mesh, const r3d_view *view,const r3d_lights *lig
         /* pass 2: failing fragments, written as the fail action says */
         if (s->alpha_test && s->alpha_fail != 0) {
             int color = s->alpha_fail != 2, alpha = s->alpha_fail == 1, depth = s->depth_write && s->alpha_fail == 2;
-            glUniform1i(U.pass, 2);
+            uni1i(&uc.pass, U.pass, 2);
             set_depth(s, depth);
             set_masks(s->color_mask, color, alpha);
             glDrawArrays(GL_TRIANGLES, g->first, g->count);

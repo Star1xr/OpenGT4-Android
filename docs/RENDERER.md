@@ -35,6 +35,14 @@ form one draw. The shaders reproduce the software rasterizer of
 Faces kept by the reference (counter-clockwise on its y-down screen) are
 counter-clockwise in GL.
 
+A group only issues the calls it needs (2026-10-18): blend, depth, cull, the
+colour mask, the unit 0 texture and the per-group uniforms are compared with
+the previous group's values and skipped when they are the same. A course mesh
+is a thousand groups and neighbouring groups usually share a material, so the
+repeated calls were most of the submission cost. The Android frame log line
+also reports what the last frame drew: `last frame N draws, M triangles, K
+groups culled`.
+
 ## Validation
 
 `showroom_probe` captures the same scene with either renderer (it restarts
