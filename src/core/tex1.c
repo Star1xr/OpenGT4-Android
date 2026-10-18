@@ -258,9 +258,17 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
     }
     unsigned ntex = le16(d + 0x14), ntr = le16(d + 0x16);
     uint32_t ptex = le32(d + 0x18), ptr = le32(d + 0x1c);
-    if (!ntex || (uint64_t)ptex + 0x28ull * ntex > size || (uint64_t)ptr + 12ull * ntr > size) {
+    if ((uint64_t)ptex + 0x28ull * ntex > size || (uint64_t)ptr + 12ull * ntr > size) {
         report_once(RPT_HEADER, 0, ntex, ntr);
         return -1;
+    }
+    /* A block the authors left empty (no textures, no transfers) is not a
+       failure: several cars carry four of them, and counting those as
+       unsupported said the same thing as a real decode failure. */
+    if (!ntex) {
+        if (ntr) { report_once(RPT_HEADER, 0, ntex, ntr); return -1; }
+        *out = NULL;
+        return 0;
     }
 
     uint8_t *vram = calloc(1, VRAM_SIZE);

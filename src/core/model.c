@@ -670,8 +670,10 @@ static gt4_model *decode(const uint8_t *bytes,size_t size,int color,int model_in
     for(unsigned i=0;i<r.nt;i++) {
         r.texbase[i]=-1;size_t at=u32(d+list+i*4);if(!span(n,at,48)){if(stats && !stats->fail_line)stats->fail_line=__LINE__;goto fail;}
         tex1_image *images=NULL;int count=tex1_decode(d+at,n-at,&images);
-        if(count>0){void *q=realloc(m->textures,(size_t)(m->ntextures+count)*sizeof *m->textures);if(!q){tex1_free(images,count);{if(stats && !stats->fail_line)stats->fail_line=__LINE__;goto fail;}}
-            m->textures=q;r.texbase[i]=m->ntextures;memcpy(m->textures+m->ntextures,images,count*sizeof *images);m->ntextures+=count;free(images);}
+        /* 0 is an empty block the authors left that way, -1 is bad data: only
+           the second is worth counting as unsupported. */
+        if(count>=0){if(count>0){void *q=realloc(m->textures,(size_t)(m->ntextures+count)*sizeof *m->textures);if(!q){tex1_free(images,count);{if(stats && !stats->fail_line)stats->fail_line=__LINE__;goto fail;}}
+            m->textures=q;r.texbase[i]=m->ntextures;memcpy(m->textures+m->ntextures,images,count*sizeof *images);m->ntextures+=count;free(images);}}
         else m->unsupported++;
     }
     unsigned models=u16(d+22);size_t mo=u32(d+56);if(!span(n,mo,(size_t)models*40)){if(stats && !stats->fail_line)stats->fail_line=__LINE__;goto fail;}

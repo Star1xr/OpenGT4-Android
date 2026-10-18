@@ -25,7 +25,8 @@ typedef struct {
 } tex1_image;
 
 /* Decodes every texture in a Tex1 file. On success returns the number of
-   images and sets *out (free with tex1_free). Returns -1 on bad data. */
+   images and sets *out (free with tex1_free); a file with no textures at all
+   returns 0 and *out NULL. Returns -1 on bad data. */
 int  tex1_decode(const uint8_t *data, size_t size, tex1_image **out);
 void tex1_free(tex1_image *images, int count);
 

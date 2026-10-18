@@ -90,3 +90,10 @@ its intentional altered texel fails. Tsukuba retains 32 textures/96 levels.
 GPU selection currently uses host derivatives, not original GS Q/L/K:
 rendered image A. render3d_mips_test verifies upload/sampling over eight
 camera positions, RGB tolerance1, with a failing MXL-disabled negative.
+
+### Empty blocks (2026-10-18)
+
+Several cars carry Tex1 blocks with no textures and no transfers. They are
+empty by the authors' choice, not damaged data: the decoder returns zero images
+for them and the model counts a block as unsupported only when it really cannot
+be read.
