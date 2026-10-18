@@ -14,9 +14,10 @@ project (GPLv3, see NOTICE).
 ## Status
 
 Work in progress. The launcher runs and checks the disc, and the game starts on
-the shared GLES renderer: the 2D UI and the menus draw. The 3D scenes are still
-built with the desktop GLSL dialect, so they stay blank until that port lands.
-Touch controls, films, save transfer and the performance pass are also missing.
+the shared GLES renderer: the 2D UI, the menus and the 3D scenes draw, the last
+of them through the same shaders as the desktop build, ported to the ES GLSL
+dialect. Touch controls, films, save transfer and the performance pass are still
+missing.
 
 ## Building
 
@@ -45,8 +46,9 @@ NTSC-U / SCUS-97328 / v2.00") or the reason it was rejected.
 Android sends the game's output nowhere, so the game writes it to
 `logs/opengt4.log` in its own files directory. The launcher's Share log button
 sends that file, and the session before it stays as `logs/opengt4.log.prev`, so
-a crash does not take the older one with it. The GLES version, the driver, the
-shader messages and the scene size are all in there.
+a crash does not take the older one with it. The log holds the GLES version, the
+driver, the shader messages, the scene size and, every five seconds, the frame
+rate with the worst frame of that window.
 
 ## Reading the disc
 

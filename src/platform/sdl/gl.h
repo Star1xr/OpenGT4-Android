@@ -113,5 +113,10 @@ int gl_enable_reversed_z(void);
 #define GL_DEPTH_FAR         (gl_reversed_z ? 0.0 : 1.0)
 /* Compiles and links a vertex/fragment program; 0 on error (logged). */
 GLuint gl_program(const char *vertex, const char *fragment);
+/* Interpolation qualifier for the fog varying the 3D shaders share. Desktop GL
+   has noperspective; GLES has no such qualifier, so without the NV extension
+   the varying interpolates smoothly (a slightly softer fog edge). Measured
+   once, with a context current. */
+int gl_noperspective_supported(void);
 
 #endif

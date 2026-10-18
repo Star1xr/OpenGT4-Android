@@ -13,6 +13,37 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef OPENGT4_GLES
+/* GLES takes the ES GLSL dialect; the bodies below are shared. */
+#define GLSL_HEADER "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n"
+#else
+#define GLSL_HEADER "#version 330 core\n"
+#endif
+
+/* Same prolog idea as render_gl.c, plus the interpolation qualifier GLES may
+   not have: without the NV extension the fog varying interpolates smoothly,
+   which only softens its edge a little. */
+static char *glsl_source(const char *body)
+{
+    const char *qualifier = gl_noperspective_supported() ? "noperspective" : "smooth";
+    size_t size = strlen(GLSL_HEADER) + strlen(body) + strlen(qualifier) + 32;
+    char *source = malloc(size);
+    if (!source) return NULL;
+    snprintf(source, size, "%s#define NOPERSPECTIVE %s\n%s", GLSL_HEADER, qualifier, body);
+    return source;
+}
+
+/* Both stages get the prolog; the driver copies the text, so it is freed. */
+static GLuint glsl_program(const char *vertex, const char *fragment)
+{
+    char *v = glsl_source(vertex), *f = glsl_source(fragment);
+    GLuint program = 0;
+    if (v && f) program = gl_program(v, f);
+    free(v);
+    free(f);
+    return program;
+}
+
 /* vertex: position 3, normal 3, uv 2, colour 3, ambient 3, specular 3, shine + alpha 2 */
 #define VFLOATS 19
 #define SKIN_VFLOATS 27
@@ -69,7 +100,6 @@ static struct {
 } U;
 
 static const char *vs =
-    "#version 330 core\n"
     "layout(location=0) in vec3 a_pos; layout(location=1) in vec3 a_normal; layout(location=2) in vec2 a_uv;\n"
     "layout(location=3) in vec3 a_rgb; layout(location=4) in vec3 a_amb; layout(location=5) in vec3 a_spec;\n"
     "layout(location=6) in vec2 a_shine_alpha;\n"
@@ -82,7 +112,7 @@ static const char *vs =
     "uniform int u_nlights; uniform vec3 u_ldir[4],u_lamb[4],u_ldif[4],u_lspe[4]; uniform float u_lspec_scale, u_lvertex;\n"
     "out float v_floor; out vec3 v_light; out vec3 v_spec; out vec2 v_envuv; out vec2 v_uv; out float v_alpha;\n"
     /* the GS interpolates F across the screen as it does the colours */
-    "uniform vec3 u_fog; noperspective out float v_fog;\n"
+    "uniform vec3 u_fog; NOPERSPECTIVE out float v_fog;\n"
     "const vec3 L[3]=vec3[3](vec3(.57735,.57735,.57735),vec3(0.,.9759,-.2182),vec3(-1.,0.,0.));\n"
     "const vec3 D=vec3(1.,60./255.,216./255.), S=vec3(239./255.,108./255.,198./255.);\n"
     "void main(){\n"
@@ -143,9 +173,8 @@ static const char *vs =
     "}\n";
 
 static const char *fs =
-    "#version 330 core\n"
     "in float v_floor; uniform int u_mirror; in vec3 v_light; in vec3 v_spec; in vec2 v_envuv; in vec2 v_uv; in float v_alpha; out vec4 o;\n"
-    "noperspective in float v_fog; uniform vec3 u_fogcol, u_grade_rgb, u_grade;\n"
+    "NOPERSPECTIVE in float v_fog; uniform vec3 u_fogcol, u_grade_rgb, u_grade;\n"
     "uniform sampler2D u_tex, u_dest, u_envtex; uniform int u_has_tex, u_cc, u_tfx, u_native, u_nearest, u_mip_count, u_minify;\n"
     "uniform vec2 u_texsize; uniform ivec2 u_size, u_wrap, u_envsize; uniform ivec4 u_region;\n"
     "uniform int u_atest, u_afunc, u_pass, u_date, u_date_bit, u_reflect; uniform float u_aref, u_untex, u_fade; uniform vec2 u_focal_px;\n"
@@ -213,7 +242,7 @@ int r3d_available(void)
 {
     if (program) return 1;
     if (failed) return 0;
-    program = gl_program(vs, fs);
+    program = glsl_program(vs, fs);
     if (!program) { failed = 1; return 0; }
 #define UNI(field, name) U.field = glGetUniformLocation(program, name)
     UNI(rot, "u_rot"); UNI(pos, "u_pos"); UNI(cam, "u_cam"); UNI(r, "u_r"); UNI(u, "u_u"); UNI(f, "u_f");
@@ -510,9 +539,9 @@ void r3d_end_layer_sample(float opacity,int additive,int index,int samples)
     if(layer.clipped){glEnable(GL_SCISSOR_TEST);glScissor(layer.scissor[0],layer.scissor[1],layer.scissor[2],layer.scissor[3]);}
     else glDisable(GL_SCISSOR_TEST);
     if(!layer.copy){
-        layer.copy=gl_program(
-            "#version 330 core\nout vec2 uv; void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2); uv=p; gl_Position=vec4(p*2.-1.,0.,1.);}\n",
-            "#version 330 core\nin vec2 uv; out vec4 o; uniform sampler2D image; void main(){o=texture(image,uv);}\n");
+        layer.copy=glsl_program(
+            "out vec2 uv; void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2); uv=p; gl_Position=vec4(p*2.-1.,0.,1.);}\n",
+            "in vec2 uv; out vec4 o; uniform sampler2D image; void main(){o=texture(image,uv);}\n");
         glGenVertexArrays(1,&layer.vao);
         layer.image=glGetUniformLocation(layer.copy,"image");
     }
@@ -738,12 +767,10 @@ static int wheel_accumulate(r3d_texture *t,int samples,float angle)
         frame_stats.wheel_cache_hits++;return 1;
     }
     if(!wheel_program) {
-        wheel_program=gl_program(
-            "#version 330 core\n"
+        wheel_program=glsl_program(
             "uniform vec3 points[4];uniform vec2 extent;out vec2 uv;\n"
             "void main(){int i=gl_VertexID;uv=vec2(i==1||i==2?1.:0.,i>=2?1.:0.);"
             "gl_Position=vec4(points[i].xy/extent*2.-1.,0.,1.);}\n",
-            "#version 330 core\n"
             "uniform sampler2D source;uniform int scanmask,copy_pass;in vec2 uv;out vec4 color;\n"
             "void main(){if(scanmask==1&&(int(gl_FragCoord.y)&1)==0)discard;"
             "vec2 p=copy_pass==1?vec2(uv.x,(1.+2.*uv.y)/3.):uv;"
@@ -1024,14 +1051,14 @@ int r3d_floor_shadow(r3d_mesh *mesh,const r3d_view *v,const float light[3],float
     static struct {GLint rot,pos,cam,r,u,f,L,focal,image,step,darkness;} S;
     if(failed_shadow || !mesh || darkness<=0 || light[1]<=.1f)return 0;
     if(!cast) {
-        cast=gl_program(
-            "#version 330 core\nlayout(location=0) in vec3 p; uniform mat3 rot; uniform vec3 pos,cam,r,u,f,L; uniform vec2 focal;\n"
+        cast=glsl_program(
+            "layout(location=0) in vec3 p; uniform mat3 rot; uniform vec3 pos,cam,r,u,f,L; uniform vec2 focal;\n"
             "void main(){vec3 w=rot*p+pos; float den=L.y-w.y; w=L+(w-L)*(L.y/max(.01,den)); w.y=0.; w-=cam; float z=dot(w,f);\n"
             "gl_Position=vec4(dot(w,r)*focal.x,dot(w,u)*focal.y,z-0.4,z); if(den<=.01)gl_Position=vec4(2.,2.,2.,1.);}\n",
-            "#version 330 core\nout vec4 o; void main(){o=vec4(0.,0.,0.,1.);}\n");
-        filter=gl_program(
-            "#version 330 core\nout vec2 uv; void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2); uv=p; gl_Position=vec4(p*2.-1.,0.,1.);}\n",
-            "#version 330 core\nin vec2 uv; out vec4 o; uniform sampler2D image; uniform vec2 step; uniform float darkness;\n"
+            "out vec4 o; void main(){o=vec4(0.,0.,0.,1.);}\n");
+        filter=glsl_program(
+            "out vec2 uv; void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2); uv=p; gl_Position=vec4(p*2.-1.,0.,1.);}\n",
+            "in vec2 uv; out vec4 o; uniform sampler2D image; uniform vec2 step; uniform float darkness;\n"
             "void main(){float a=texture(image,uv).a*.227027; a+=(texture(image,uv+step*1.384615).a+texture(image,uv-step*1.384615).a)*.316216;\n"
             "a+=(texture(image,uv+step*3.230769).a+texture(image,uv-step*3.230769).a)*.070270; o=vec4(0.,0.,0.,a*darkness);}\n");
         if(!cast || !filter) {
@@ -1107,11 +1134,11 @@ void r3d_end_target_add(const float rgb[3], int blur)
     if (!size) return;
     r3d_end();
     if (!copy && !failed_copy) {
-        copy = gl_program(
-            "#version 330 core\nout vec2 uv; void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2); uv=p; gl_Position=vec4(p*2.-1.,0.,1.);}\n",
+        copy = glsl_program(
+            "out vec2 uv; void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2); uv=p; gl_Position=vec4(p*2.-1.,0.,1.);}\n",
             /* uv: 0..1 across the drawn rectangle, v up; the GS's rows go
                down, so its "first texels" are the picture's top */
-            "#version 330 core\nin vec2 uv; out vec4 o; uniform sampler2D image; uniform vec2 shift; uniform float range; uniform vec3 tint;\n"
+            "in vec2 uv; out vec4 o; uniform sampler2D image; uniform vec2 shift; uniform float range; uniform vec3 tint;\n"
             "void main(){vec2 t=vec2(uv.x*range,1.-(1.-uv.y)*range)+shift; o=vec4(texture(image,t).rgb*tint,1.);}\n");
         if (!copy) failed_copy = 1;
         else {
@@ -1211,13 +1238,13 @@ void r3d_draw_sprites(const r3d_sprite_texture *t,const r3d_view *view,const flo
     float *buf;
     if(!t || !view || !corners || squares<=0 || failed_sprites)return;
     if(!prog) {
-        prog=gl_program(
-            "#version 330 core\nlayout(location=0) in vec3 p; layout(location=1) in vec2 uv; layout(location=2) in vec4 c;\n"
+        prog=glsl_program(
+            "layout(location=0) in vec3 p; layout(location=1) in vec2 uv; layout(location=2) in vec4 c;\n"
             "uniform vec2 focal, clip; out vec2 v_uv; out vec4 v_c;\n"
             "void main(){float z=-p.z; v_uv=uv; v_c=c;\n"
             "gl_Position=vec4(p.x*focal.x,p.y*focal.y,z*clip.x+clip.y,z);}\n",
             /* the texel's alpha is the GS's (128 = 1), stored as 0..255 */
-            "#version 330 core\nin vec2 v_uv; in vec4 v_c; out vec4 o; uniform sampler2D image; uniform int test;\n"
+            "in vec2 v_uv; in vec4 v_c; out vec4 o; uniform sampler2D image; uniform int test;\n"
             "void main(){vec4 t=texture(image,v_uv); if(test==1 && t.a<=0.) discard; o=vec4(t.rgb*v_c.rgb,t.a*255./128.*v_c.a);}\n");
         if(!prog){failed_sprites=1;return;}
         u_focal=glGetUniformLocation(prog,"focal");u_clip=glGetUniformLocation(prog,"clip");u_image=glGetUniformLocation(prog,"image");u_test=glGetUniformLocation(prog,"test");

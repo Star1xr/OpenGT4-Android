@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <SDL.h>
 
 #ifdef OPENGT4_GLES
 
@@ -11,7 +12,19 @@
 int gl_reversed_z;
 int gl_enable_reversed_z(void) { return gl_reversed_z = 0; }
 
+/* ES has no noperspective qualifier at all; GL_NV_shader_noperspective_
+   interpolation is the only way to get it back. Asked once per process. */
+int gl_noperspective_supported(void)
+{
+    static int supported = -1;
+    if (supported < 0) supported = SDL_GL_ExtensionSupported("GL_NV_shader_noperspective_interpolation") ? 1 : 0;
+    return supported;
+}
+
 #else
+
+/* Desktop GL 3.3 has noperspective in core. */
+int gl_noperspective_supported(void) { return 1; }
 
 #define OPENGT4_GL_DEFINE(type, name) type name;
 OPENGT4_GL_FUNCS(OPENGT4_GL_DEFINE)

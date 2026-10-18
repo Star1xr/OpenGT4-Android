@@ -14,7 +14,30 @@
 #include "video_gl.h"
 
 #include <SDL.h>
+#include <stdarg.h>
 #include <stdio.h>
+
+/* logcat needs adb and the game's own log is stderr, so every line from this
+   file goes to both: the launcher can share the file, nobody can share logcat. */
+static void notify(int priority, const char *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    __android_log_vprint(priority, OPENGT4_ANDROID_LOG_TAG, format, ap);
+    va_end(ap);
+    va_start(ap, format);
+    vfprintf(stderr, format, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+    fflush(stderr);
+}
+
+#undef ALOGI
+#undef ALOGW
+#undef ALOGE
+#define ALOGI(...) notify(ANDROID_LOG_INFO, __VA_ARGS__)
+#define ALOGW(...) notify(ANDROID_LOG_WARN, __VA_ARGS__)
+#define ALOGE(...) notify(ANDROID_LOG_ERROR, __VA_ARGS__)
 
 static SDL_Window   *window;
 static SDL_GLContext context;
@@ -105,14 +128,14 @@ int plat_video_init(const plat_video_desc *desc)
     }
     es32 = es_major > 3 || (es_major == 3 && es_minor >= 2);
     if (!es32)
-        ALOGW("current context is ES %d.%d: no noperspective, smooth will be used", es_major, es_minor);
+        ALOGW("GLES 3.2 unavailable (ES %d.%d); using the ES 3.0 feature set", es_major, es_minor);
 
-    const int nv_nopersp = SDL_GL_ExtensionSupported("GL_NV_shader_noperspective_interpolation");
+    const int nv_nopersp = gl_noperspective_supported();
     snprintf(gl_info, sizeof gl_info, "ES %d.%d | %s | %s | noperspective:%s",
              es_major, es_minor, glstr(GL_VENDOR), glstr(GL_RENDERER), nv_nopersp ? "NV" : "smooth");
     ALOGI("GLES %d.%d | GLSL %s", es_major, es_minor, glstr(GL_SHADING_LANGUAGE_VERSION));
     ALOGI("vendor=%s renderer=%s", glstr(GL_VENDOR), glstr(GL_RENDERER));
-    ALOGI("noperspective interpolation: %s", nv_nopersp ? "NV extension" : "unavailable (smooth)");
+    ALOGI("noperspective: %s", nv_nopersp ? "NV extension" : "no, smooth varyings");
 
     SDL_GL_SetSwapInterval(desc && desc->vsync ? 1 : 0);
     (void)(desc ? desc->upscale : 0); /* no FSR: Android always renders native */
@@ -137,10 +160,34 @@ void plat_video_begin_frame(void)
     video_gl_frame_begin();
 }
 
+/* The log file is the only place a player can see how a scene really runs, so
+   one line every five seconds with the frame rate and the worst frame. */
+static void frame_stats(void)
+{
+    static Uint64 window_start, previous;
+    static unsigned frames, worst;
+    const double frequency = (double)SDL_GetPerformanceFrequency();
+    Uint64 now = SDL_GetPerformanceCounter();
+    if (!window_start) window_start = now;
+    if (previous) {
+        Uint64 delta = now - previous;
+        if (delta > worst) worst = (unsigned)delta;
+    }
+    previous = now;
+    frames++;
+    if (now - window_start < (Uint64)(5.0 * frequency)) return;
+    double seconds = (now - window_start) / frequency;
+    fprintf(stderr, "frame: %u in %.1fs, %.1f fps, mean %.1f ms, max %.1f ms\n",
+            frames, seconds, frames / seconds, seconds * 1000.0 / frames, worst * 1000.0 / frequency);
+    fflush(stderr);
+    window_start = now; frames = 0; worst = 0;
+}
+
 void plat_video_end_frame(void)
 {
     video_gl_frame_end();
     if (window && video_gl_should_present()) SDL_GL_SwapWindow(window);
+    frame_stats();
 }
 
 int video_set_vsync(int enabled)
