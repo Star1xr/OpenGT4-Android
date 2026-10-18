@@ -48,6 +48,9 @@ void video_set_menu_pacing(int enabled)
 static int profile_frames, profile_draws, profile_quads;
 static uint64_t profile_start, profile_cpu, profile_gpu, profile_window;
 static unsigned profile_count, profile_gpu_samples;
+/* plat_time_ns() is already in nanoseconds, so the report window is a constant:
+   the same five seconds the frame rate line uses. */
+static const uint64_t profile_report_ns = 5000000000ull;
 
 void video_set_profile(int enabled)
 {
@@ -476,7 +479,7 @@ void video_gl_frame_end(void)
             profile_gpu_samples++;
         } else done = plat_time_ns();
         if (!profile_window) profile_window = done;
-        if (done - profile_window >= (uint64_t)(5.0 * (double)SDL_GetPerformanceFrequency())) {
+        if (done - profile_window >= profile_report_ns) {
             double n = profile_count ? (double)profile_count : 1.0;
             double g = profile_gpu_samples ? (double)profile_gpu_samples : 1.0;
             fprintf(stderr, "video profile: cpu %.2f ms, gpu %.2f ms/frame, %u draws, %u quads per frame, %.1f fps\n",
