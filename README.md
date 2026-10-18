@@ -18,6 +18,9 @@
 > [!NOTE]
 > OpenGT4 is an unofficial fan project, not affiliated with or endorsed by Sony Interactive Entertainment or Polyphony Digital. Gran Turismo is a trademark of Sony Interactive Entertainment; all trademarks belong to their owners. The project is developed with heavy AI assistance.
 
+> [!NOTE]
+> **Android:** this tree also builds an unofficial **Android ARM64 port** (OpenGL ES 3.2, Jetpack Compose launcher, in-place disc reading, touch controls). It is a modified version, not the official OpenGT4 release, and it is built by CI only. See [`docs/ANDROID.md`](docs/ANDROID.md).
+
 ---
 
 ## Play

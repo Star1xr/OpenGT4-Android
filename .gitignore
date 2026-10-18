@@ -58,3 +58,22 @@ splat/undefined_*_auto.txt
 
 # PCSX2 reference captures (game memory, never commit)
 captures/
+
+# Android / Gradle / NDK
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+android/.cxx/
+android/local.properties
+android/.idea/
+android/captures/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.jks
+*.keystore
+
+# Prebuilt shared objects (FFmpeg etc.) are private assets: private-assets branch
+android/app/src/main/jniLibs/

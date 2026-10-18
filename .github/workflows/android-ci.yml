@@ -1,0 +1,70 @@
+# OpenGT4 Android CI
+#
+# Build'ler bilerek YALNIZCA ozel repoda kosar (AGENTS.md §3-4): public ayna
+# ayni commit'leri tasir ama Actions dakikasi harcamaz.
+name: android-ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'Star1xr/opengt4privaterepo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: SDK/NDK/CMake kur
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1"
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Native derleme + debug APK
+        working-directory: android
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: APK artefakti
+        uses: actions/upload-artifact@v4
+        with:
+          name: opengt4-android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Loglari sakla
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-ci-logs
+          path: |
+            android/app/build/**/*.log
+            android/.gradle/**/*.log
+          if-no-files-found: ignore

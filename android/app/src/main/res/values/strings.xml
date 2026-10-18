@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenGT4</string>
+    <string name="app_subtitle">Android port · based on OpenGT4 · unofficial</string>
+
+    <string name="disc_section">Game disc</string>
+    <string name="disc_none">No disc selected</string>
+    <string name="disc_select">Select disc image</string>
+    <string name="disc_change">Change</string>
+    <string name="disc_play">Play</string>
+    <string name="disc_checking">Checking disc…</string>
+    <string name="disc_ready">Ready</string>
+
+    <string name="notice">
+        This app contains no Gran Turismo 4 data. Use your own dump of your own
+        disc. Unofficial Android port, based on OpenGT4 (GPLv3) — not the
+        official OpenGT4 release.
+    </string>
+    <string name="error_not_seekable">
+        This file cannot be read directly (the provider does not allow seeking).
+        Copy the disc image to this device\'s storage and select it again.
+    </string>
+    <string name="error_open">Could not open the selected file.</string>
+    <string name="error_too_small">This file is too small to be a Gran Turismo 4 disc image.</string>
+</resources>
