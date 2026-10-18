@@ -21,4 +21,7 @@
     </string>
     <string name="error_open">Could not open the selected file.</string>
     <string name="error_too_small">This file is too small to be a Gran Turismo 4 disc image.</string>
+
+    <string name="share_log">Share log</string>
+    <string name="share_log_subject">OpenGT4 log</string>
 </resources>

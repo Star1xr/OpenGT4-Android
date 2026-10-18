@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the game's log leaves the app, through the launcher's Share button. -->
+<paths>
+    <files-path name="logs" path="logs/" />
+</paths>

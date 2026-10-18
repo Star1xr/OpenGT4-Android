@@ -44,8 +44,10 @@ fun LauncherScreen(
     validationText: String?,
     errorText: String?,
     banner: String,
+    logAvailable: Boolean,
     onSelect: () -> Unit,
     onPlay: () -> Unit,
+    onShareLog: () -> Unit,
 ) {
     Scaffold { inner ->
         Column(
@@ -128,6 +130,13 @@ fun LauncherScreen(
                     Spacer(Modifier.width(12.dp))
                 }
                 Text(stringResource(R.string.disc_play))
+            }
+
+            // The game's log from the last run, when there is one.
+            if (logAvailable) {
+                OutlinedButton(onClick = onShareLog, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.share_log))
+                }
             }
 
             if (errorText != null) {

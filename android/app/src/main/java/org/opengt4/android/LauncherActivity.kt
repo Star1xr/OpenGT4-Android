@@ -1,6 +1,7 @@
 package org.opengt4.android
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.opengt4.android.bridge.NativeBridge
@@ -42,8 +44,12 @@ class LauncherActivity : ComponentActivity() {
     /** Options as loaded from video.ini; the settings UI arrives in phase 5. */
     private var videoOptions by mutableStateOf<VideoOptions?>(null)
 
+    /** The game keeps its log in private storage; the chooser is the way out. */
+    private var logAvailable by mutableStateOf(false)
+
     private val videoFile: String get() = File(filesDir, "video.ini").absolutePath
     private val savesDir: String get() = File(filesDir, "saves").absolutePath
+    private val logFile: File get() = File(filesDir, "logs/opengt4.log")
 
     private val pickDisc = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@registerForActivityResult
@@ -78,8 +84,10 @@ class LauncherActivity : ComponentActivity() {
                         }
                     },
                     banner = banner,
+                    logAvailable = logAvailable,
                     onSelect = { pickDisc.launch(arrayOf("*/*")) },
                     onPlay = { play() },
+                    onShareLog = { shareLog() },
                 )
 
                 // Video options: the files are small and no disc is touched.
@@ -116,6 +124,11 @@ class LauncherActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        logAvailable = logFile.length() > 0
+    }
+
     private fun sync(ok: Boolean) {
         ready = ok && DiscHolder.ready
         discName = if (ready) DiscHolder.name else ""
@@ -125,6 +138,33 @@ class LauncherActivity : ComponentActivity() {
 
     private fun play() {
         if (!DiscHolder.ready || validated == false) return
+        appendSessionHeader()
         startActivity(Intent(this, GameActivity::class.java))
+    }
+
+    /** Device and version, so a shared log needs no other context. */
+    private fun appendSessionHeader() {
+        runCatching {
+            logFile.parentFile?.mkdirs()
+            logFile.appendText(
+                "\n-- launcher: device=${Build.MODEL} android=${Build.VERSION.RELEASE}" +
+                    " (${Build.VERSION.SDK_INT}) abi=${Build.SUPPORTED_ABIS.firstOrNull() ?: "?"}" +
+                    " app=$banner\n"
+            )
+        }
+    }
+
+    private fun shareLog() {
+        if (logFile.length() <= 0) return
+        runCatching {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", logFile)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, getString(R.string.share_log_subject))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, getString(R.string.share_log)))
+        }
     }
 }
