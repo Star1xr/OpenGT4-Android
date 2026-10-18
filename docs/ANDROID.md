@@ -9,6 +9,7 @@ project (GPLv3, see NOTICE).
 - arm64-v8a, minSdk 26, OpenGL ES 3.2 with a fallback to ES 3.0.
 - Your own Gran Turismo 4 disc image is read where it is. Nothing is copied or extracted.
 - 3D scenes are drawn at the Resolution setting of video.ini (1280x960 by default) and scaled up to the screen, without multisampling. Raise it for sharpness, lower it for speed.
+- Full screen, with vsync off by default: both are fields of video.ini.
 - SDL2 for the window, input and audio, and a Jetpack Compose launcher for disc selection.
 - No game data and no upscaling code in the repository.
 
@@ -62,11 +63,15 @@ with a message asking the user to copy the file to the device first.
 
 ## Controls
 
-The PS2 pad is on the screen: the D-pad and the four action buttons in the
-bottom corners, L1/L2 and R1/R2 at the top, START and SELECT at the bottom
-centre. They are the real PS2 buttons, so the game's own key configuration
-applies to them exactly as it does to a wired controller. Analog sticks and
-progressive pedals are not on the screen yet.
+The PS2 pad is on the screen: the D-pad in the bottom left, the four action
+buttons in the bottom right, L1/L2 and R1/R2 at the top corners, START and
+SELECT at the bottom centre. They are the real PS2 buttons, so the game's own
+key configuration applies to them exactly as it does to a wired controller.
+Analog sticks and progressive pedals are not on the screen yet.
+
+The pad is anchored to the screen corners and sized from the display's own
+density, so the Resolution setting, the 4:3/16:9 choice and the panel size
+never move, stretch or shrink it.
 
 A controller connected over Bluetooth or USB takes the first player, and the
 on-screen pad hides while it is there. Remove it and the pad returns.

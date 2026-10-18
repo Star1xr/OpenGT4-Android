@@ -52,9 +52,14 @@ void video_ui_quality(int filter,float text_sharpness);
 int video_set_vsync(int enabled);
 /* A rectangle of the virtual screen as a GL viewport in frame pixels. */
 void   video_viewport(float x, float y, float w, float h, int *vx, int *vy, int *vw, int *vh);
-/* The inverse, for input: framebuffer pixels (rows bottom up) to the virtual
-   screen the game draws in. Returns 0 when there is no valid layout yet. */
-int    video_screen_to_view(float px, float py, float *x, float *y);
+/* Overlay drawing in framebuffer pixels: one unit is one pixel, x runs right
+   from the left edge, y runs down from the top edge, no aspect fit and no
+   letterbox. Overlays (the on-screen pad) use this so they keep the same size
+   and the same place at any Resolution, panel or display ratio. begin()
+   returns the frame size the overlay is laid out in; end() restores the view
+   the game was drawing with, so the pair has to wrap the overlay's quads. */
+void   video_ui_pixels_begin(int *width, int *height);
+void   video_ui_pixels_end(void);
 /* Copies what the frame holds in a rectangle of the virtual screen into t
    (created or resized as needed; NULL makes one). Drawn back with
    plat_draw_quad4 and v from 1 (top) to 0: GL rows run bottom up. */

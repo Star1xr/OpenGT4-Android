@@ -74,6 +74,12 @@ static int ui_panel_on, ui_panel_x, ui_panel_y, ui_panel_w, ui_panel_h;
 static int ui_clip_on, ui_clip_x, ui_clip_y, ui_clip_w, ui_clip_h;
 static float view_w = 640, view_h = 480, scale_x = 1, scale_y = 1, off_x, off_y;
 
+/* Overlay drawing in framebuffer pixels (video_ui_pixels_begin): the game's
+   view is kept here while an overlay uses the pixel one. */
+static int pixels_view;
+static float pixels_saved_view_w, pixels_saved_view_h;
+static int pixels_saved_menu_projection;
+
 /* 2D batch */
 typedef struct { float x, y, u, v; uint8_t c[4]; } vertex2d;
 #define BATCH 16384
@@ -531,6 +537,7 @@ void video_gl_shutdown(void)
     ui_panel_on = ui_clip_on = 0; display_aspect = 0; menu_projection = 1;
     view_w = 640; view_h = 480; scale_x = scale_y = 1; off_x = off_y = 0;
     content_width = content_x = side_margin = 0;
+    pixels_view = 0;
     frame_presented = 0; upscale = 0;
     render_w = render_h = render_samples = 0;
 }
@@ -781,17 +788,38 @@ void video_viewport(float x, float y, float w, float h, int *vx, int *vy, int *v
     if (x == 0 && w == view_w) { *vx = (int)(content_x + .5f); *vw = (int)(content_width + .5f); }
 }
 
-/* The other direction: framebuffer pixels (rows bottom up, as the viewport
-   uses them) to the virtual screen the game draws in. This is the exact
-   inverse of what the 2D path does with a point, so a touch lands on the quad
-   it looks like, whatever the panel, the letterbox or the projection does.
-   Returns 0 while there is no valid layout. */
-int video_screen_to_view(float px, float py, float *x, float *y)
+/* ---- overlay drawing in framebuffer pixels ----
+
+   One UI unit is one framebuffer pixel, x runs right from the left edge and y
+   runs down from the top edge, with no aspect fit and no letterbox. The
+   on-screen pad (android_touch.c) draws here, so its size and its place come
+   from the panel and the physical size of a finger, not from the game's
+   Resolution setting or the display ratio. The game's own view (and its
+   derived scale, offset and margins) is put back by end(). */
+void video_ui_pixels_begin(int *width, int *height)
 {
-    if (scale_x <= 0 || scale_y <= 0) return 0;
-    *x = (px - off_x) / scale_x;
-    *y = view_h - (py - off_y) / scale_y;
-    return 1;
+    video_flush2d();
+    if (!pixels_view) {
+        pixels_saved_view_w = view_w; pixels_saved_view_h = view_h;
+        pixels_saved_menu_projection = menu_projection;
+        pixels_view = 1;
+    }
+    view_w = (float)fb_w; view_h = (float)fb_h;
+    scale_x = scale_y = 1; off_x = off_y = 0;
+    content_width = (float)fb_w; content_x = 0; side_margin = 0;
+    menu_projection = 0;
+    if (width) *width = fb_w;
+    if (height) *height = fb_h;
+}
+
+void video_ui_pixels_end(void)
+{
+    if (!pixels_view) return;
+    video_flush2d();
+    pixels_view = 0;
+    view_w = pixels_saved_view_w; view_h = pixels_saved_view_h;
+    menu_projection = pixels_saved_menu_projection;
+    layout_view();
 }
 
 void video_ui_panel(float y, float h)

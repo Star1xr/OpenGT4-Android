@@ -9,9 +9,11 @@
  *
  * Nothing of the game is copied: every symbol is generated at start (shapes and
  * a 5x7 caption font), so the repository carries no image and no disc data is
- * read. The pad is laid out in the game's 640x448 UI space, so it rides the
- * same view transform as the game's own 2D and follows the panel, the letterbox
- * and the Resolution setting.
+ * read. The pad is drawn in framebuffer pixels (video_ui_pixels_begin), one
+ * unit per pixel, anchored to the screen corners, so the Resolution setting,
+ * the 4:3/16:9 choice and the panel size never move or scale it. Its sizes are
+ * in dp (the display's own density), so the controls feel the same on a phone
+ * and on a tablet.
  */
 #include "platform/platform.h"
 #include "android_platform.h"
@@ -55,7 +57,11 @@ enum { GLYPH_DISC, GLYPH_RING, GLYPH_TRIANGLE, GLYPH_SQUARE, GLYPH_CROSS,
 
 enum { STYLE_ACTION, STYLE_DPAD, STYLE_BAR };
 
-/* One drawn and touched button, in the game's 640x448 space. */
+/* The drawn keys, in the order the layout fills them. */
+enum { K_CROSS, K_CIRCLE, K_TRIANGLE, K_SQUARE, K_L1, K_L2, K_R1, K_R2,
+       K_START, K_SELECT, K_UP, K_DOWN, K_LEFT, K_RIGHT, K_COUNT };
+
+/* One drawn and touched button, in framebuffer pixels with y running down. */
 typedef struct {
     unsigned char key;      /* TK_* */
     unsigned char style;    /* STYLE_* */
@@ -65,26 +71,16 @@ typedef struct {
     uint8_t color[3];
 } pad_key;
 
-/* Thumbs at the bottom corners, shoulders at the top corners, the system
-   buttons at the bottom centre. Only the outer edges are used, so the middle of
-   the frame stays clear for driving. */
-static const pad_key pad_layout[] = {
-    { TK_L2, STYLE_BAR, -1, "L2",  12, 12, 78, 26, { 205, 210, 220 } },
-    { TK_L1, STYLE_BAR, -1, "L1",  12, 46, 78, 26, { 205, 210, 220 } },
-    { TK_R2, STYLE_BAR, -1, "R2", 550, 12, 78, 26, { 205, 210, 220 } },
-    { TK_R1, STYLE_BAR, -1, "R1", 550, 46, 78, 26, { 205, 210, 220 } },
-    { TK_TRIANGLE, STYLE_ACTION, GLYPH_TRIANGLE, NULL, 534, 274, 44, 44, { 120, 225, 130 } },
-    { TK_CIRCLE,   STYLE_ACTION, GLYPH_RING,     NULL, 578, 318, 44, 44, { 240, 115, 120 } },
-    { TK_CROSS,    STYLE_ACTION, GLYPH_CROSS,    NULL, 534, 362, 44, 44, { 110, 155, 240 } },
-    { TK_SQUARE,   STYLE_ACTION, GLYPH_SQUARE,   NULL, 490, 318, 44, 44, { 235, 140, 215 } },
-    { TK_UP,    STYLE_DPAD, GLYPH_UP,    NULL,  62, 274, 44, 44, { 225, 230, 240 } },
-    { TK_DOWN,  STYLE_DPAD, GLYPH_DOWN,  NULL,  62, 362, 44, 44, { 225, 230, 240 } },
-    { TK_LEFT,  STYLE_DPAD, GLYPH_LEFT,  NULL,  18, 318, 44, 44, { 225, 230, 240 } },
-    { TK_RIGHT, STYLE_DPAD, GLYPH_RIGHT, NULL, 106, 318, 44, 44, { 225, 230, 240 } },
-    { TK_SELECT, STYLE_BAR, -1, "SELECT", 240, 396, 64, 24, { 225, 230, 240 } },
-    { TK_START,  STYLE_BAR, -1, "START",  320, 396, 64, 24, { 225, 230, 240 } },
-};
-#define PAD_KEYS (sizeof pad_layout / sizeof pad_layout[0])
+/* The pad's own colours: flat and quiet, so it reads as a port's overlay and
+   not as an emulator skin. The four symbols keep their usual hues. */
+static const uint8_t color_triangle[3] = { 145, 230, 175 };
+static const uint8_t color_circle[3]   = { 242, 150, 150 };
+static const uint8_t color_cross[3]    = { 150, 185, 245 };
+static const uint8_t color_square[3]   = { 235, 165, 225 };
+static const uint8_t color_neutral[3]  = { 222, 230, 242 };
+
+static pad_key keys[K_COUNT];
+static int layout_w, layout_h;   /* 0 until the first frame knows the size */
 
 /* ---- generated symbol atlas ---- */
 #define ATLAS_W 512
@@ -97,7 +93,7 @@ static const pad_key pad_layout[] = {
 typedef struct { int x, y, w, h; } atlas_cell;
 
 static const atlas_cell glyph_cell[GLYPH_COUNT] = {
-    {   0,   0, 128, 128 },  /* disc: the round backing of an action button */
+    {   0,   0, 128, 128 },  /* disc: the round backing of a button */
     { 128,   0, 128, 128 },  /* ring: its rim */
     { 256,   0,  64,  64 },  /* triangle */
     { 320,   0,  64,  64 },  /* square */
@@ -280,6 +276,58 @@ static int caption_index(char c)
     return 0;
 }
 
+/* ---- the layout, in framebuffer pixels ----
+   Every size is a dp count times the display's density, computed from the
+   screen's shorter side and clamped, so a panel whose reported DPI is odd
+   still gets a thumb-sized button. */
+
+static float pad_unit(int w, int h)
+{
+    float ddpi = 0, hdpi = 0, vdpi = 0, s = 0;
+    if (SDL_GetDisplayDPI(0, &ddpi, &hdpi, &vdpi) == 0 && (ddpi > 0 || hdpi > 0))
+        s = (ddpi > 0 ? ddpi : hdpi) / 160.f;
+    float d = 64.f * s, minwh = (float)(w < h ? w : h);
+    if (!(d > minwh * .055f)) d = minwh * .055f;
+    if (d > minwh * .105f) d = minwh * .105f;
+    return d / 64.f;
+}
+
+static void key_set(int i, unsigned char key, unsigned char style, signed char glyph,
+                    const char *label, float x, float y, float w, float h, const uint8_t color[3])
+{
+    keys[i].key = key; keys[i].style = style; keys[i].glyph = glyph; keys[i].label = label;
+    keys[i].x = x; keys[i].y = y; keys[i].w = w; keys[i].h = h;
+    memcpy(keys[i].color, color, 3);
+}
+
+static void layout_build(int w, int h)
+{
+    float s = pad_unit(w, h), d = 64 * s, m = 16 * s, fw = (float)w, fh = (float)h;
+    /* The thumbs sit in the bottom corners, in the arrangement a DualShock
+       carries: the action diamond right, the D-pad left, and the centre of the
+       frame free for driving. Rows grow down, so row zero is the top one. */
+    float ax = fw - m, ay = fh - m - 3 * d;
+    key_set(K_TRIANGLE, TK_TRIANGLE, STYLE_ACTION, GLYPH_TRIANGLE, NULL, ax - 2 * d, ay, d, d, color_triangle);
+    key_set(K_SQUARE,   TK_SQUARE,   STYLE_ACTION, GLYPH_SQUARE,   NULL, ax - 3 * d, ay + d, d, d, color_square);
+    key_set(K_CIRCLE,   TK_CIRCLE,   STYLE_ACTION, GLYPH_RING,     NULL, ax - d,     ay + d, d, d, color_circle);
+    key_set(K_CROSS,    TK_CROSS,    STYLE_ACTION, GLYPH_CROSS,    NULL, ax - 2 * d, ay + 2 * d, d, d, color_cross);
+    key_set(K_UP,    TK_UP,    STYLE_DPAD, GLYPH_UP,    NULL, m + d,     ay, d, d, color_neutral);
+    key_set(K_LEFT,  TK_LEFT,  STYLE_DPAD, GLYPH_LEFT,  NULL, m,         ay + d, d, d, color_neutral);
+    key_set(K_RIGHT, TK_RIGHT, STYLE_DPAD, GLYPH_RIGHT, NULL, m + 2 * d, ay + d, d, d, color_neutral);
+    key_set(K_DOWN,  TK_DOWN,  STYLE_DPAD, GLYPH_DOWN,  NULL, m + d,     ay + 2 * d, d, d, color_neutral);
+    /* Shoulders at the top corners, the trigger above the bumper as on the pad. */
+    float bw = 78 * s, bh = 32 * s, bg = 8 * s;
+    key_set(K_L2, TK_L2, STYLE_BAR, -1, "L2", m, m, bw, bh, color_neutral);
+    key_set(K_L1, TK_L1, STYLE_BAR, -1, "L1", m, m + bh + bg, bw, bh, color_neutral);
+    key_set(K_R2, TK_R2, STYLE_BAR, -1, "R2", fw - m - bw, m, bw, bh, color_neutral);
+    key_set(K_R1, TK_R1, STYLE_BAR, -1, "R1", fw - m - bw, m + bh + bg, bw, bh, color_neutral);
+    /* Start and Select at the bottom centre. */
+    float sw = 78 * s, sh = 30 * s;
+    key_set(K_SELECT, TK_SELECT, STYLE_BAR, -1, "SELECT", fw * .5f - bg * .5f - sw, fh - m - sh, sw, sh, color_neutral);
+    key_set(K_START,  TK_START,  STYLE_BAR, -1, "START",  fw * .5f + bg * .5f,      fh - m - sh, sw, sh, color_neutral);
+    layout_w = w; layout_h = h;
+}
+
 /* ---- drawing ---- */
 
 static void draw_cell(int glyph, float x, float y, float w, float h, const uint8_t color[4])
@@ -289,11 +337,14 @@ static void draw_cell(int glyph, float x, float y, float w, float h, const uint8
                    (float)(c->x + c->w) / ATLAS_W, (float)(c->y + c->h) / ATLAS_H, color);
 }
 
+/* The atlas holds each caption once; a character is one cell of it, and the
+   pattern inside the cell is centred both ways. */
 static void draw_caption(const char *text, float x, float y, float w, float h, const uint8_t color[4])
 {
-    const float step = 9, cw = 8, ch = 12;
     int n = text ? (int)strlen(text) : 0;
-    float left = x + (w - (n * step - 1)) * .5f, top = y + (h - ch) * .5f;
+    if (!n) return;
+    float ch = h * .6f, cw = ch * ((float)FONT_CELL_W / FONT_CELL_H), step = cw * .92f;
+    float left = x + (w - ((n - 1) * step + cw)) * .5f, top = y + (h - ch) * .5f;
     for (int i = 0; i < n; i++) {
         int g = caption_index(text[i]);
         plat_draw_quad(atlas, left + i * step, top, cw, ch,
@@ -306,22 +357,24 @@ static void draw_caption(const char *text, float x, float y, float w, float h, c
 static void draw_key(const pad_key *b)
 {
     int down = (held >> b->key) & 1;
-    uint8_t back[4] = { 10, 14, 20, down ? 145 : 80 };
-    uint8_t ink[4] = { b->color[0], b->color[1], b->color[2], down ? 255 : 180 };
+    uint8_t back[4] = { 8, 11, 16, down ? 150 : 92 };
+    uint8_t ink[4] = { b->color[0], b->color[1], b->color[2], down ? 255 : 205 };
     switch (b->style) {
     case STYLE_ACTION: {
         /* The rim sits outside the hit rectangle, so the round button is a
            little bigger than the touch target and the target can stay square. */
-        float r = b->w * .14f, s = b->w + 2 * r, g = b->w * .54f;
+        float r = b->w * .14f, s = b->w + 2 * r, g = b->w * .5f;
         draw_cell(GLYPH_DISC, b->x - r, b->y - r, s, s, back);
         draw_cell(GLYPH_RING, b->x - r, b->y - r, s, s, ink);
         draw_cell(b->glyph, b->x + (b->w - g) * .5f, b->y + (b->h - g) * .5f, g, g, ink);
         break;
     }
-    case STYLE_DPAD:
-        plat_draw_quad(NULL, b->x, b->y, b->w, b->h, 0, 0, 1, 1, back);
-        draw_cell(b->glyph, b->x + b->w * .27f, b->y + b->h * .27f, b->w * .46f, b->h * .46f, ink);
+    case STYLE_DPAD: {
+        float g = b->w * .54f;
+        draw_cell(GLYPH_DISC, b->x, b->y, b->w, b->h, back);
+        draw_cell(b->glyph, b->x + (b->w - g) * .5f, b->y + (b->h - g) * .5f, g, g, ink);
         break;
+    }
     default: /* STYLE_BAR */
         plat_draw_quad(NULL, b->x, b->y, b->w, b->h, 0, 0, 1, 1, back);
         draw_caption(b->label, b->x, b->y, b->w, b->h, ink);
@@ -337,22 +390,30 @@ void plat_android_touch_draw(void)
     video_ui_panel(0, 0);
     plat_set_clip(0, 0, 0, 0);
     if (!atlas) return;
-    for (size_t i = 0; i < PAD_KEYS; i++) draw_key(&pad_layout[i]);
+    int w = 0, h = 0;
+    video_ui_pixels_begin(&w, &h);
+    if (w > 0 && h > 0) {
+        /* The frame's own size, which is what the overlay was laid out for. */
+        if (w != layout_w || h != layout_h) layout_build(w, h);
+        for (int i = 0; i < K_COUNT; i++) draw_key(&keys[i]);
+    }
+    video_ui_pixels_end();
 }
 
 /* ---- the touch surface ---- */
 
-/* A touch, in the game's UI space (640x448 by default). SDL normalizes a
-   finger against the surface; the renderer's own inverse maps the pixel back,
-   so the pad lands where the game's 2D does at any panel size. */
-static int touch_to_view(float nx, float ny, float *x, float *y)
+/* A touch, in framebuffer pixels with y running down: exactly the space the
+   overlay draws in, so no transform and no mirroring sit between them. SDL
+   normalizes a finger against the surface, whose size is the drawable size. */
+static int touch_point(float nx, float ny, float *x, float *y)
 {
     SDL_Window *window = plat_sdl_window();
-    int dw = 1, dh = 1;
+    int dw = 0, dh = 0;
     if (!window) return 0;
     SDL_GL_GetDrawableSize(window, &dw, &dh);
-    /* Framebuffer rows run bottom up, so the row is mirrored here. */
-    return video_screen_to_view(nx * dw, (1.0f - ny) * dh, x, y);
+    if (dw <= 0 || dh <= 0) return 0;
+    *x = nx * (float)dw; *y = ny * (float)dh;
+    return 1;
 }
 
 /* The key whose centre is nearest, with a little room around the ink so a
@@ -361,12 +422,12 @@ static int hit_key(float gx, float gy)
 {
     int best = -1;
     float best_d = 0;
-    for (size_t i = 0; i < PAD_KEYS; i++) {
-        const pad_key *b = &pad_layout[i];
-        float pad = 5, cx = b->x + b->w * .5f, cy = b->y + b->h * .5f;
+    for (int i = 0; i < K_COUNT; i++) {
+        const pad_key *b = &keys[i];
+        float pad = b->w * .12f, cx = b->x + b->w * .5f, cy = b->y + b->h * .5f;
         if (gx < b->x - pad || gx > b->x + b->w + pad || gy < b->y - pad || gy > b->y + b->h + pad) continue;
         float dx = gx - cx, dy = gy - cy, d = dx * dx + dy * dy;
-        if (best < 0 || d < best_d) { best = (int)i; best_d = d; }
+        if (best < 0 || d < best_d) { best = i; best_d = d; }
     }
     return best;
 }
@@ -541,17 +602,21 @@ void plat_android_touch_shutdown(void)
 void plat_android_touch_update(void)
 {
     unsigned want = 0;
+    SDL_Window *window = plat_sdl_window();
+    int dw = 0, dh = 0;
+    if (window) SDL_GL_GetDrawableSize(window, &dw, &dh);
+    if (dw > 0 && dh > 0 && (dw != layout_w || dh != layout_h)) layout_build(dw, dh);
     pad_sync();
     for (int i = 0; i < PAD_FINGERS; i++) {
         if (!fingers[i].used) continue;
-        if (!fingers[i].resolved) {
-            /* A finger claims the key it landed on. The mapping needs the
-               frame's view transform, so it happens here and not in the event
-               callback, which may run before the first frame. */
+        if (!fingers[i].resolved && layout_w > 0) {
+            /* A finger claims the key it landed on. The layout follows the
+               frame, so the mapping happens here and not in the event callback,
+               which may run before the first frame. */
             float gx = 0, gy = 0;
-            int index = touch_to_view(fingers[i].x, fingers[i].y, &gx, &gy) ? hit_key(gx, gy) : -1;
+            int index = touch_point(fingers[i].x, fingers[i].y, &gx, &gy) ? hit_key(gx, gy) : -1;
             fingers[i].resolved = 1;
-            fingers[i].key = index >= 0 ? pad_layout[index].key : -1;
+            fingers[i].key = index >= 0 ? keys[index].key : -1;
             if (++touch_logged <= 8)
                 ALOGI("touch: %.3f,%.3f -> %.0f,%.0f -> %s", fingers[i].x, fingers[i].y, gx, gy,
                       index >= 0 ? key_name[fingers[i].key] : "none");
