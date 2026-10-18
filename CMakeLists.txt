@@ -175,14 +175,17 @@ if(OPENGT4_LIBS_ONLY)
   return()
 endif()
 
-# The game core and the physics reference each other: the race code in the core
-# calls line and race-over helpers that live in the physics library, and the
-# physics calls back into the core. MSVC resolves symbols regardless of order,
-# but GNU ld walks each static archive once, in order, so the two archives
-# travel in one group the linker rescans until nothing is left undefined.
+# The game core, the physics and the platform storage reference each other: the
+# race code in the core calls line and race-over helpers that live in the
+# physics library, the physics calls back into the core, and the core reads
+# files through plat_file_* from the storage library. MSVC resolves symbols
+# regardless of order, but GNU ld walks each static archive once, in order, and
+# the order CMake picks depends on which libraries a target happens to name. The
+# three archives travel in one group the linker rescans until nothing is left
+# undefined.
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24 AND NOT MSVC)
   add_library(opengt4_game_libs INTERFACE)
-  target_link_libraries(opengt4_game_libs INTERFACE "$<LINK_GROUP:RESCAN,opengt4_core,opengt4_physics>")
+  target_link_libraries(opengt4_game_libs INTERFACE "$<LINK_GROUP:RESCAN,opengt4_core,opengt4_physics,opengt4_platform_common>")
   link_libraries(opengt4_game_libs)
 endif()
 
