@@ -41,10 +41,20 @@ void video_set_menu_pacing(int enabled)
     enabled = enabled != 0;
     if (menu_pacing != enabled) { menu_pacing = enabled; menu_deadline = 0; }
 }
-/* Diagnostic only: synchronize the GPU to measure complete frame work. */
+/* Diagnostic only: what the frame costs. The submission time is measured every
+   frame (GL calls are asynchronous, so this is the CPU's own cost), the GPU is
+   synchronized only now and then, so a diagnostic never becomes the reason the
+   frame is slow. */
 static int profile_frames, profile_draws, profile_quads;
-static uint64_t profile_start, profile_total, profile_window;
-static unsigned profile_count;
+static uint64_t profile_start, profile_cpu, profile_gpu, profile_window;
+static unsigned profile_count, profile_gpu_samples;
+
+void video_set_profile(int enabled)
+{
+    profile_frames = enabled != 0;
+    profile_count = profile_draws = profile_quads = profile_gpu_samples = 0;
+    profile_cpu = profile_gpu = profile_window = 0;
+}
 
 /* P: optional native-resolution filming, independent of the window.
    Each record is one real rendered frame; no resampling or duplicated frames.
@@ -449,15 +459,33 @@ void video_gl_frame_end(void)
     video_flush2d();
     capture_framebuffer();
     glDisable(GL_SCISSOR_TEST);
+    uint64_t submitted = profile_frames ? plat_time_ns() : 0;
+    if (profile_frames) profile_cpu += submitted - profile_start;
     glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
     glBlitFramebuffer(0, 0, fb_w, fb_h, 0, 0, drawable_w, drawable_h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
     if (profile_frames) {
-        glFinish(); profile_total += plat_time_ns() - profile_start; profile_count++;
-        if (profile_count == 30) {
-            fprintf(stderr, "video profile: %.3f ms/frame, %.1f draws/frame, %.1f quads/frame, %.1f fps\n",
-                    profile_total / 1e6 / profile_count, (double)profile_draws / profile_count, (double)profile_quads / profile_count, (profile_count - 1) * 1e9 / (profile_start - profile_window));
-            profile_count = profile_draws = profile_quads = 0; profile_total = profile_window = 0;
+        profile_count++;
+        /* Every fifteenth frame waits for the GPU, so the numbers include its
+           work without turning the diagnostic into a per-frame stall. */
+        uint64_t done;
+        if (profile_count % 15 == 0) {
+            glFinish();
+            done = plat_time_ns();
+            profile_gpu += done - submitted;
+            profile_gpu_samples++;
+        } else done = plat_time_ns();
+        if (!profile_window) profile_window = done;
+        if (done - profile_window >= (uint64_t)(5.0 * (double)SDL_GetPerformanceFrequency())) {
+            double n = profile_count ? (double)profile_count : 1.0;
+            double g = profile_gpu_samples ? (double)profile_gpu_samples : 1.0;
+            fprintf(stderr, "video profile: cpu %.2f ms, gpu %.2f ms/frame, %u draws, %u quads per frame, %.1f fps\n",
+                    profile_cpu / 1e6 / n, profile_gpu / 1e6 / g,
+                    (unsigned)(profile_draws / n), (unsigned)(profile_quads / n),
+                    (n - 1.0) * 1e9 / (double)(done - profile_window));
+            profile_count = profile_draws = profile_quads = profile_gpu_samples = 0;
+            profile_cpu = profile_gpu = 0;
+            profile_window = done;
         }
     }
     frame_presented = 1;

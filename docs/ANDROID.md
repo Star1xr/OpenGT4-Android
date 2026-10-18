@@ -49,9 +49,11 @@ Android sends the game's output nowhere, so the game writes it to
 `logs/opengt4.log` in its own files directory. The launcher's Share log button
 sends that file, and the session before it stays as `logs/opengt4.log.prev`, so
 a crash does not take the older one with it. The log holds the GLES version, the
-driver, the shader messages, the size 3D scenes are drawn at, whether the
-on-screen pad or a connected controller is driving, and, every five seconds, the
-frame rate with the worst frame of that window.
+driver, the shader messages, the size 3D scenes are drawn at, which input
+devices the launcher saw, whether the on-screen pad or a connected controller is
+driving, and, every five seconds, the frame rate with the worst frame of that
+window plus what a frame costs on the CPU and, on a sample of frames, on the
+GPU.
 
 ## Reading the disc
 
@@ -77,13 +79,18 @@ A controller connected over Bluetooth or USB takes the first player, and the
 on-screen pad hides while it is there. Remove it and the pad returns.
 
 The launcher lists the devices the system reports (gamepad or wheel, keyboard
-and mouse) and follows them as they are plugged in and out. The on-screen pad
-is used only while none of them is connected; the On-screen pad buttons in the
-launcher force it on or off instead. A keyboard drives with the arrows or with
-W, A, S and D, shifts with Q and E, brakes with Space and pauses with Esc.
+and mouse) and follows them as they are plugged in and out. A keyboard or a
+mouse hides the on-screen pad; a gamepad or a wheel hides it only when the game
+can actually use that device, so a device the system calls a gamepad but nothing
+can open never leaves the player without controls. The On-screen pad buttons in
+the launcher force the pad on or off instead. A keyboard drives with the arrows
+or with W, A, S and D, shifts with Q and E, brakes with Space and pauses with
+Esc.
 
-The game writes what it decided to the log ("controls: on-screen pad auto,
-devices 0x1"), so a missing or unexpected pad is easy to place.
+The launcher writes every device the system reports to the log, with its
+sources, and the game writes what it decided ("controls: on-screen pad auto,
+devices 0x1") and, when the pad stays hidden, which device hid it. A missing or
+unexpected pad is readable, not a guess.
 
 ## Layout
 

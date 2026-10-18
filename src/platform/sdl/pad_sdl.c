@@ -53,20 +53,27 @@ void plat_input_set_onscreen(int mode,unsigned known)
 void plat_sdl_note_device(unsigned kind)
 {onscreen_seen|=kind;}
 /* Whether an on-screen pad must stay hidden: the player's choice wins, and
-   otherwise a pad, wheel, keyboard or mouse in use does. Nothing shows an
-   on-screen pad on the desktop, so only the app's own launcher and the
-   Android backend read this. */
+   otherwise a keyboard or mouse in use, or a controller SDL can actually open,
+   does. The launcher's gamepad bit is not enough on its own: a device Android
+   reports as a gamepad that SDL has no mapping for cannot drive anything, and
+   hiding the pad for it leaves the player with no controls at all. The
+   launcher's list is the only way to see a keyboard or a mouse, and SDL is the
+   one that decides whether a pad really is a pad. */
 int plat_sdl_onscreen_hidden(void)
 {
  if(onscreen_mode==PLAT_ONSCREEN_ON)return 0;
  if(onscreen_mode==PLAT_ONSCREEN_OFF)return 1;
- if((onscreen_known|onscreen_seen)&(PLAT_INPUT_DEVICE_GAMEPAD|PLAT_INPUT_DEVICE_KEYBOARD|PLAT_INPUT_DEVICE_MOUSE))return 1;
+ if((onscreen_known|onscreen_seen)&(PLAT_INPUT_DEVICE_KEYBOARD|PLAT_INPUT_DEVICE_MOUSE))return 1;
  for(int i=0;i<SDL_NumJoysticks();i++){
   if(SDL_JoystickIsVirtual(i))continue;
   if(SDL_IsGameController(i) || SDL_JoystickGetDeviceType(i)==SDL_JOYSTICK_TYPE_WHEEL)return 1;
  }
  return 0;
 }
+/* The devices behind the answer above, so a backend that hides its pad can
+   name what hid it instead of leaving the player to guess. */
+unsigned plat_sdl_onscreen_devices(void)
+{return onscreen_known|onscreen_seen;}
 void plat_input_set_ffb(int index,float torque)
 {
  if(!plat_input_is_wheel(index))return;

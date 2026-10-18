@@ -203,6 +203,7 @@ class LauncherActivity : ComponentActivity() {
     private fun play() {
         if (!DiscHolder.ready || validated == false) return
         appendSessionHeader()
+        appendDeviceLog()
         // The device list is read now: the game follows it for its own pad.
         val intent = Intent(this, GameActivity::class.java).apply {
             putExtra(GameActivity.EXTRA_TOUCH_MODE, touchMode.id)
@@ -219,6 +220,21 @@ class LauncherActivity : ComponentActivity() {
                 "\n-- launcher: device=${Build.MODEL} android=${Build.VERSION.RELEASE}" +
                     " (${Build.VERSION.SDK_INT}) abi=${Build.SUPPORTED_ABIS.firstOrNull() ?: "?"}" +
                     " app=$banner\n"
+            )
+        }
+    }
+
+    /**
+     * Every device the system reports and what the launcher made of it. The
+     * on-screen pad follows that list, so a pad that never shows up has a
+     * written reason instead of a guess.
+     */
+    private fun appendDeviceLog() {
+        runCatching {
+            logFile.parentFile?.mkdirs()
+            logFile.appendText(
+                "-- launcher: controls=${touchMode.id}, recognised: ${InputDevices.describe(deviceList)}\n" +
+                    "-- launcher: all input devices:\n${InputDevices.dump(this)}\n"
             )
         }
     }

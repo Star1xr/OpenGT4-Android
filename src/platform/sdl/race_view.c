@@ -483,7 +483,7 @@ static void install(race_view *v,race_asset *a)
         }
         if(d->skin_mesh){gt4_model_free(d->skin);d->skin=NULL;}
     }
-    fprintf(stderr,"course: world=%d triangles, %d grid positions\n",a->world->count,a->course.grid_count);
+    fprintf(stderr,"course: world=%d triangles, %d grid positions, %d texture blocks dropped\n",a->world->count,a->course.grid_count,a->world->unsupported);
     /* Uploaded meshes own GPU data. Keep the course/RNW4 buffer for physics
        and surface queries, but release the large decoded CPU model copies. */
     if(v->world){gt4_model_free(a->world);a->world=NULL;}

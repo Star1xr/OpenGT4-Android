@@ -26,6 +26,7 @@
 
 #include <SDL.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -608,13 +609,35 @@ static void pad_detach(void)
 /* A controller, a wheel, a keyboard or a mouse always wins the first player's
    port, so the on-screen pad exists only while none of them is there. The
    choice (auto, on or off) is the launcher's and lives in pad_sdl.c. */
+/* The device bits behind a hidden pad, as one readable line: without it a
+   player with a keyboard or mouse plugged in sees the controls never appear
+   and has nothing in the log to point at. */
+static void log_hidden(unsigned bits)
+{
+    static const struct { unsigned bit; const char *name; } names[] = {
+        { PLAT_INPUT_DEVICE_GAMEPAD, "gamepad" },
+        { PLAT_INPUT_DEVICE_KEYBOARD, "keyboard" },
+        { PLAT_INPUT_DEVICE_MOUSE, "mouse" } };
+    char text[64];
+    size_t at = 0;
+    for (unsigned i = 0; i < sizeof names / sizeof names[0]; i++)
+        if (bits & names[i].bit)
+            at += (size_t)snprintf(text + at, sizeof text - at, "%s%s", at ? ", " : "", names[i].name);
+    if (!at) memcpy(text, "an SDL controller", 18);
+    ALOGW("touch pad: off, %s in use, the controls stay hidden (devices 0x%x)", text, bits);
+    ALOGW("touch pad: choose On in the launcher to put the controls back on the screen");
+}
+
 static void pad_sync(void)
 {
+    static int last_hidden = -1;
     int hidden = plat_sdl_onscreen_hidden();
-    if (hidden && pad_on) {
-        ALOGW("touch pad: off, another input device is in use");
-        pad_detach();
-    } else if (!hidden && !pad_on && !pad_failed) pad_attach();
+    if (hidden != last_hidden) {
+        last_hidden = hidden;
+        if (hidden) log_hidden(plat_sdl_onscreen_devices());
+    }
+    if (hidden && pad_on) pad_detach();
+    else if (!hidden && !pad_on && !pad_failed) pad_attach();
 }
 
 void plat_android_touch_init(void)
@@ -640,6 +663,9 @@ void plat_android_touch_update(void)
     if (window) SDL_GL_GetDrawableSize(window, &dw, &dh);
     if (dw > 0 && dh > 0 && (dw != layout_w || dh != layout_h)) layout_build(dw, dh);
     pad_sync();
+    /* With the pad hidden the finger map means nothing: resolving it would
+       only fill the log with lines about a pad that is not on the screen. */
+    if (!pad_on) return;
     for (int i = 0; i < PAD_FINGERS; i++) {
         if (!fingers[i].used) continue;
         if (!fingers[i].resolved && layout_w > 0) {

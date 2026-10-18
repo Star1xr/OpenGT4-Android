@@ -169,6 +169,9 @@ int plat_video_init(const plat_video_desc *desc)
     /* The touch PS2 controls; they draw with the shared 2D renderer, so the
        atlas is built here, while the context is current. */
     plat_android_touch_init();
+    /* Android has no adb at hand while playing, so the frame cost goes to the
+       game's own log: CPU submission every frame, GPU on a sample of frames. */
+    video_set_profile(1);
     return 0;
 }
 

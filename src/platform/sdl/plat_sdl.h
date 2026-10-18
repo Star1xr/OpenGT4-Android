@@ -38,7 +38,9 @@ unsigned char *plat_sdl_read_view(int *width, int *height);   /* the game's area
 /* On-screen controls policy (pad_sdl.c): the frontend sets it through
    plat_input_set_onscreen, a device the player actually uses is noted through
    plat_sdl_note_device, and this answers whether a backend's on-screen pad
-   must stay hidden. */
+   must stay hidden. plat_sdl_onscreen_devices hands back the PLAT_INPUT_DEVICE_*
+   bits behind that answer, so a hidden pad can say which device hid it. */
 void plat_sdl_note_device(unsigned kind);
 int plat_sdl_onscreen_hidden(void);
+unsigned plat_sdl_onscreen_devices(void);
 #endif

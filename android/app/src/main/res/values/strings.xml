@@ -34,6 +34,7 @@
     <string name="touch_auto">Auto</string>
     <string name="touch_on">On</string>
     <string name="touch_off">Off</string>
-    <string name="pad_active">The on-screen pad is used.</string>
-    <string name="pad_hidden">The on-screen pad stays hidden while a device is connected.</string>
+    <string name="pad_active">On: the on-screen pad is always there.</string>
+    <string name="pad_hidden">Off: the on-screen pad is never drawn.</string>
+    <string name="pad_auto">Auto: the pad hides while a keyboard or mouse is in use, or a gamepad is connected.</string>
 </resources>

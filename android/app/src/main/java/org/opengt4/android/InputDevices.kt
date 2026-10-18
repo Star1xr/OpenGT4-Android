@@ -15,7 +15,15 @@ object DeviceKind {
 }
 
 /** One device the system reports, in the terms the on-screen pad policy uses. */
-class ConnectedDevice(val id: Int, val name: String, val kind: Int)
+class ConnectedDevice(
+    val id: Int,
+    val name: String,
+    val kind: Int,
+    val sources: Int,
+    val vendorId: Int,
+    val productId: Int,
+    val axes: String,
+)
 
 /**
  * What the launcher wants the on-screen pad to do.
@@ -46,13 +54,53 @@ object InputDevices {
         val found = mutableListOf<ConnectedDevice>()
         for (id in manager.inputDeviceIds) {
             val source = manager.getInputDevice(id) ?: continue
-            kindOf(source)?.let { found += ConnectedDevice(id, source.name ?: "?", it) }
+            kindOf(source)?.let {
+                found += ConnectedDevice(id, source.name ?: "?", it, source.sources,
+                    source.vendorId, source.productId, axesOf(source))
+            }
         }
         return found
     }
 
     /** The platform flags for a list of devices. */
     fun flags(devices: List<ConnectedDevice>): Int = devices.fold(0) { all, device -> all or device.kind }
+
+    /** The kinds it recognised, spelled out for the log. */
+    fun describe(devices: List<ConnectedDevice>): String =
+        if (devices.isEmpty()) "none"
+        else devices.joinToString("; ") {
+            "${it.name}[id=${it.id} ${kindName(it.kind)} sources=0x${Integer.toHexString(it.sources)}" +
+                " vendor=0x${Integer.toHexString(it.vendorId)} product=0x${Integer.toHexString(it.productId)}" +
+                " axes=(${it.axes})]"
+        }
+
+    /**
+     * Every device the system reports, recognised or not. A pad that never
+     * appears on the screen has to be readable somewhere, or the reason is a
+     * guess: this is the raw list, with the two fields the policy turns on.
+     */
+    fun dump(context: Context): String {
+        val manager = context.getSystemService(Context.INPUT_SERVICE) as? InputManager
+            ?: return "no input service"
+        val lines = mutableListOf<String>()
+        for (id in manager.inputDeviceIds) {
+            val device = manager.getInputDevice(id) ?: continue
+            lines += "id=$id name=\"${device.name}\" sources=0x${Integer.toHexString(device.sources)}" +
+                " keyboardType=${device.keyboardType}" +
+                " vendor=0x${Integer.toHexString(device.vendorId)} product=0x${Integer.toHexString(device.productId)}" +
+                " axes=(${axesOf(device)}) kind=${kindOf(device)?.let { kindName(it) } ?: "ignored"}"
+        }
+        return if (lines.isEmpty()) "none" else lines.joinToString("\n")
+    }
+
+    private fun kindName(kind: Int): String = when (kind) {
+        DeviceKind.GAMEPAD -> "gamepad"
+        DeviceKind.KEYBOARD -> "keyboard"
+        else -> "mouse"
+    }
+
+    private fun axesOf(device: InputDevice): String =
+        device.motionRanges.joinToString(",") { it.axis.toString() }
 
     /** Hot plug: the system calls back on add, remove and change. */
     fun listener(onChanged: () -> Unit): InputManager.InputDeviceListener =
@@ -65,10 +113,17 @@ object InputDevices {
     /** A gamepad or wheel, a keyboard or a mouse; null for anything else. */
     private fun kindOf(device: InputDevice): Int? {
         val sources = device.sources
+        /* A finger or a pen is what the on-screen pad is for, not a reason to
+           hide it: a stylus is also reported as a mouse. */
         if (sources and InputDevice.SOURCE_TOUCHSCREEN != 0) return null
-        if (sources and InputDevice.SOURCE_GAMEPAD != 0) return DeviceKind.GAMEPAD
-        if (sources and InputDevice.SOURCE_JOYSTICK != 0) return DeviceKind.GAMEPAD   /* wheels report this one */
-        if (sources and InputDevice.SOURCE_KEYBOARD != 0) return DeviceKind.KEYBOARD
+        if (sources and InputDevice.SOURCE_STYLUS != 0) return null
+        /* A joystick with no motion range is a name, not a pad. Some keyboards
+           carry a stray gamepad bit, and hiding the controls for one of those
+           leaves a tablet with no way to drive. */
+        val pad = sources and (InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_JOYSTICK)
+        if (pad != 0 && device.motionRanges.isNotEmpty()) return DeviceKind.GAMEPAD
+        if (sources and InputDevice.SOURCE_KEYBOARD != 0 &&
+            device.keyboardType != InputDevice.KEYBOARD_TYPE_NONE) return DeviceKind.KEYBOARD
         if (sources and InputDevice.SOURCE_MOUSE != 0) return DeviceKind.MOUSE
         return null
     }

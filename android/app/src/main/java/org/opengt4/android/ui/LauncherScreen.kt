@@ -27,7 +27,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.opengt4.android.ConnectedDevice
 import org.opengt4.android.DeviceKind
-import org.opengt4.android.InputDevices
 import org.opengt4.android.R
 import org.opengt4.android.TouchMode
 import java.util.Locale
@@ -193,8 +192,11 @@ fun LauncherScreen(
                     }
                     Text(
                         text = stringResource(
-                            if (padUsed(deviceList, touchMode)) R.string.pad_active
-                            else R.string.pad_hidden
+                            when (touchMode) {
+                                TouchMode.AUTO -> R.string.pad_auto
+                                TouchMode.ON -> R.string.pad_active
+                                TouchMode.OFF -> R.string.pad_hidden
+                            }
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -239,12 +241,6 @@ fun LauncherScreen(
             )
         }
     }
-}
-
-private fun padUsed(devices: List<ConnectedDevice>, mode: TouchMode): Boolean = when (mode) {
-    TouchMode.ON -> true
-    TouchMode.OFF -> false
-    TouchMode.AUTO -> InputDevices.flags(devices) == 0
 }
 
 @Composable

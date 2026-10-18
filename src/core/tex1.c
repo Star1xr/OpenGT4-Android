@@ -122,19 +122,32 @@ static int writable(uint32_t psm)
     return psm == PSMCT32 || psm == PSMCT16 || psm == PSMCT16S || psm == PSMT8 || psm == PSMT4;
 }
 
-enum { RPT_TRANSFER, RPT_TEXTURE, RPT_PALETTE, RPT_PALETTE_DATA, RPT_MIP };
+enum { RPT_TRANSFER, RPT_TEXTURE, RPT_PALETTE, RPT_PALETTE_DATA, RPT_MIP,
+       RPT_HEADER, RPT_OFFSET, RPT_SHORT, RPT_BIG, RPT_MANY_LEVELS, RPT_ALLOC };
 
 /* Each format this decoder cannot take is named once, with the size it was
    used at: one image used to drop the whole file, so the log has to say which
-   one it was. */
+   one it was. The failures below (a transfer outside the block, a texture over
+   1024, levels over 6, a short transfer, no memory) drop a whole texture block
+   and used to be silent: a car or a course with those blocks missing had to be
+   guessed at, never read off the log. */
 static void report_once(unsigned kind, unsigned a, unsigned b, unsigned c)
 {
-    static struct { unsigned kind, a, b, c; } seen[16];
-    static int count;
-    for (int i = 0; i < count; i++)
+    static struct { unsigned kind, a, b, c; } seen[64];
+    static int count, full;
+    int i;
+    for (i = 0; i < count; i++)
         if (seen[i].kind == kind && seen[i].a == a && seen[i].b == b && seen[i].c == c) return;
+    /* Each distinct failure is named once and then left alone: a damaged disc
+       can repeat one for every image, and the log has to stay readable. Once
+       the table is full the later ones stay unnamed instead of flooding it. */
     if (count < (int)(sizeof seen / sizeof seen[0])) {
         seen[count].kind = kind; seen[count].a = a; seen[count].b = b; seen[count].c = c; count++;
+    } else {
+        if (full) return;
+        full = 1;
+        fprintf(stderr, "tex1: further texture failures not shown\n");
+        return;
     }
     switch (kind) {
     case RPT_TRANSFER:
@@ -151,6 +164,27 @@ static void report_once(unsigned kind, unsigned a, unsigned b, unsigned c)
         break;
     case RPT_MIP:
         fprintf(stderr, "tex1: mip format 0x%x at %ux%u not decoded, levels dropped\n", a, b, c);
+        break;
+    case RPT_HEADER:
+        if (a == 2) fprintf(stderr, "tex1: block of %u bytes is shorter than a header, block dropped\n", b);
+        else if (a == 1) fprintf(stderr, "tex1: block of %u bytes does not start with Tex1, block dropped\n", b);
+        else if (a == 3) fprintf(stderr, "tex1: no memory for %u images, block dropped\n", b);
+        else fprintf(stderr, "tex1: header out of range (%u images, %u transfers), block dropped\n", b, c);
+        break;
+    case RPT_OFFSET:
+        fprintf(stderr, "tex1: transfer format 0x%x at offset 0x%x starts past the block (%u bytes), block dropped\n", a, b, c);
+        break;
+    case RPT_SHORT:
+        fprintf(stderr, "tex1: transfer format 0x%x at offset 0x%x has less data than it needs (%u bytes), block dropped\n", a, b, c);
+        break;
+    case RPT_BIG:
+        fprintf(stderr, "tex1: texture format 0x%x is %ux%u, over 1024, block dropped\n", a, b, c);
+        break;
+    case RPT_MANY_LEVELS:
+        fprintf(stderr, "tex1: texture format 0x%x asks for %u mip levels, over 6, block dropped\n", a, b);
+        break;
+    case RPT_ALLOC:
+        fprintf(stderr, "tex1: no memory for a %ux%u texture, block dropped\n", b, c);
         break;
     }
 }
@@ -218,14 +252,20 @@ static void clut(const uint8_t *vram, uint32_t cbp, unsigned i, uint8_t out[4], 
 
 int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
 {
-    if (size < 0x30 || memcmp(d, "Tex1", 4)) return -1;
+    if (size < 0x30 || (size >= 4 && memcmp(d, "Tex1", 4))) {
+        report_once(RPT_HEADER, size < 0x30 ? 2u : 1u, (unsigned)size, 0);
+        return -1;
+    }
     unsigned ntex = le16(d + 0x14), ntr = le16(d + 0x16);
     uint32_t ptex = le32(d + 0x18), ptr = le32(d + 0x1c);
-    if (!ntex || (uint64_t)ptex + 0x28ull * ntex > size || (uint64_t)ptr + 12ull * ntr > size) return -1;
+    if (!ntex || (uint64_t)ptex + 0x28ull * ntex > size || (uint64_t)ptr + 12ull * ntr > size) {
+        report_once(RPT_HEADER, 0, ntex, ntr);
+        return -1;
+    }
 
     uint8_t *vram = calloc(1, VRAM_SIZE);
     tex1_image *imgs = calloc(ntex, sizeof *imgs);
-    if (!vram || !imgs) { free(vram); free(imgs); return -1; }
+    if (!vram || !imgs) { free(vram); free(imgs); report_once(RPT_HEADER, 3u, ntex, 0); return -1; }
 
     for (unsigned i = 0; i < ntr; i++) {
         const uint8_t *t = d + ptr + 12 * i;
@@ -237,7 +277,11 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
         /* A transfer this decoder cannot write leaves that part of video
            memory as it was: the images that do not read it still draw. */
         if (!writable(psm)) { report_once(RPT_TRANSFER, psm, w, h); continue; }
-        if (p >= size || !upload(vram, d + p, size - p, tbp, bw, (int)psm, w, h)) goto fail;
+        if (p >= size) { report_once(RPT_OFFSET, psm, p, (unsigned)size); goto fail; }
+        if (!upload(vram, d + p, size - p, tbp, bw, (int)psm, w, h)) {
+            report_once(RPT_SHORT, psm, p, (unsigned)(size - p));
+            goto fail;
+        }
     }
 
     for (unsigned i = 0; i < ntex; i++) {
@@ -253,7 +297,7 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
             if (maxu < tw) w = maxu + 1;
             if (maxv < th) h = maxv + 1;
         }
-        if (tw > 1024 || th > 1024) goto fail;
+        if (tw > 1024 || th > 1024) { report_once(RPT_BIG, psm, tw, th); goto fail; }
         imgs[i].width = (int)w; imgs[i].height = (int)h;
         imgs[i].tex_w = (int)tw; imgs[i].tex_h = (int)th;
         imgs[i].wrap_u=(uint8_t)(clamp&3);imgs[i].wrap_v=(uint8_t)((clamp>>2)&3);
@@ -264,7 +308,7 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
         {uint64_t tex1 = le64(t + 8); imgs[i].magnify=(uint8_t)((tex1>>5)&1); imgs[i].minify=(uint8_t)((tex1>>6)&7);}
         imgs[i].native_alpha=calloc((size_t)w*h,1);
         imgs[i].rgba = calloc((size_t)w * h, 4);
-        if (!imgs[i].rgba || !imgs[i].native_alpha) goto fail;
+        if (!imgs[i].rgba || !imgs[i].native_alpha) { report_once(RPT_ALLOC, 0, w, h); goto fail; }
         /* A format this decoder cannot read leaves this image in the list,
            blank, and goes on with the next one: one image used to drop the
            whole file with it. */
@@ -317,14 +361,14 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
            disc's authored levels, not averages generated from level zero.
            Base address is in 256-byte blocks; each level packs TBP14/TBW6. */
         unsigned levels=(unsigned)((le64(t+8)>>2)&7);
-        if(levels>6)goto fail;
+        if(levels>6){report_once(RPT_MANY_LEVELS,psm,levels,0);goto fail;}
         imgs[i].mip_count=(uint8_t)levels;
         for(unsigned level=1;level<=levels;level++) {
             uint64_t reg=le64(t+(level<=3?16:24));
             unsigned shift=((level-1)%3)*20;
             uint32_t bp=(uint32_t)(reg>>shift)&0x3fff,bw=(uint32_t)(reg>>(shift+14))&63;
             uint32_t mw=tw>>level,mh=th>>level;if(!mw)mw=1;if(!mh)mh=1;
-            uint8_t *pixels=malloc((size_t)mw*mh*4);if(!pixels)goto fail;
+            uint8_t *pixels=malloc((size_t)mw*mh*4);if(!pixels){report_once(RPT_ALLOC,0,mw,mh);goto fail;}
             imgs[i].mip_rgba[level-1]=pixels;
             for(uint32_t y=0;y<mh;y++)for(uint32_t x=0;x<mw;x++) {
                 uint8_t *pixel=pixels+((size_t)y*mw+x)*4;
