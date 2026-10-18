@@ -11,37 +11,43 @@ project (GPLv3, see NOTICE).
 - SDL2 for the window, input and audio, and a Jetpack Compose launcher for disc selection.
 - No game data and no upscaling code in the repository.
 
+## Status
+
+Work in progress. The launcher runs and checks the disc; the game itself is not
+wired up yet.
+
 ## Building
 
 You need JDK 17, the Android SDK with platform 35 and build-tools 35,
-NDK 27.0.12077973 and CMake 3.22.1.
+NDK 27.0.12077973 and CMake 3.22.1. Versions are pinned: Gradle 8.9, AGP 8.7.2,
+Kotlin 2.0.20, Compose BOM 2024.09.02 and SDL 2.30.9.
 
     cd android
     gradle --no-daemon :app:assembleDebug
 
 The APK is written to android/app/build/outputs/apk/debug/. There is no gradlew
-script, because the wrapper jar is a binary and is not kept here. Run
-gradle wrapper if you want one.
+script, because the wrapper jar is a binary and is not kept here.
 
-Versions are pinned: Gradle 8.9, AGP 8.7.2, Kotlin 2.0.20, Compose BOM
-2024.09.02 and SDL 2.30.9.
+Release builds read ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD from the environment. Keystores and
+passwords are never committed.
 
 ## Running it
 
     adb install -r app-debug.apk
     adb logcat -s OpenGT4:V SDL:V
 
-Choose the disc image in the launcher, then press Play. The port logs the GLES
-version, the renderer and whether noperspective interpolation is available, so
-the log is the quickest way to see what a device supports.
+Choose the disc image in the launcher, then press Play. The log names the GLES
+version, the renderer, and the disc when it is accepted ("Gran Turismo 4 -
+NTSC-U / SCUS-97328 / v2.00") or the reason it was rejected.
 
 ## Reading the disc
 
-The launcher opens the file the user picked and keeps that descriptor open for
-the lifetime of the process. The game receives it as /proc/self/fd/<n> and reads
-it with 64-bit offsets, so the image stays where it is and no storage permission
-is needed. Providers that cannot seek, which is most cloud providers, are
-rejected with a message asking the user to copy the file to the device first.
+The launcher keeps the descriptor of the file the user picked open for the
+lifetime of the process. The game receives it as /proc/self/fd/<n> and reads it
+with 64-bit offsets, so the image stays where it is and no storage permission is
+needed. Providers that cannot seek, which is most cloud providers, are rejected
+with a message asking the user to copy the file to the device first.
 
 ## Layout
 
@@ -52,25 +58,6 @@ rejected with a message asking the user to copy the file to the device first.
 
 Everything that touches the operating system sits in src/platform/android/, so
 src/core stays portable and the Windows build is untouched.
-
-## State
-
-Phase 1 works: the app starts, creates a GLES 3.2 context, checks the disc and
-draws for a few seconds before it closes.
-
-Phase 2 is in: the launcher checks the disc with the game's own code, so it
-either names the disc ("Gran Turismo 4 - NTSC-U / SCUS-97328 / v2.00") or says
-why it was rejected, and it reads and writes video.ini through the same launcher
-code as the desktop build. The game itself is not wired up yet.
-
-Next are the real render path, touch controls, the launcher settings screen,
-menu movies with an embedded FFmpeg build, and tapping directly on menu items.
-
-## Signing
-
-Release builds read ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
-ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD from the environment. Keystores and
-passwords are never committed.
 
 ## Licence
 
