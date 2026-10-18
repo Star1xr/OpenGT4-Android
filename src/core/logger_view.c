@@ -1,6 +1,7 @@
 #include "logger_view.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Track colours D_00618770 (A) / D_00618780 (B), accelerator D_00618730,
