@@ -2494,6 +2494,11 @@ add_test(NAME tex1_mips COMMAND tex1_mips_test)
 add_test(NAME tex1_mips_negative COMMAND tex1_mips_test --negative)
 set_tests_properties(tex1_mips_negative PROPERTIES WILL_FAIL TRUE)
 
+# The 16-bit texture formats and the per-image isolation, no disc needed.
+add_executable(tex1_formats_test tests/ui/tex1_formats.c)
+target_link_libraries(tex1_formats_test PRIVATE opengt4_core opengt4_platform_common)
+add_test(NAME tex1_formats COMMAND tex1_formats_test)
+
 add_executable(render3d_mips_test tests/ui/render3d_mips.c)
 target_link_libraries(render3d_mips_test PRIVATE opengt4_core opengt4_platform_sdl opengt4_platform_common SDL2::SDL2main)
 add_test(NAME render3d_mips COMMAND render3d_mips_test)

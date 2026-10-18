@@ -22,12 +22,13 @@ Header (GT Modding Hub description, checked on this disc):
 Conversion:
 
 1. Each transfer is written into a 4 MB video memory buffer using the layout
-   of its pixel format (usually PSMCT32, sometimes PSMT8).
-2. Each texture is read back with its own format (`TEX0.PSM`: PSMT8, PSMT4 or
-   PSMCT32), buffer width and base, through that format's layout.
+   of its pixel format (PSMCT32, PSMCT16, PSMCT16S, PSMT8 or PSMT4).
+2. Each texture is read back with its own format (`TEX0.PSM`: PSMT8, PSMT4,
+   PSMCT16, PSMCT16S, PSMCT32 or PSMCT24), buffer width and base, through
+   that format's layout.
 3. Palettes (`TEX0.CBP`, 32-bit, storage mode CSM1): index bits 3 and 4 are
    swapped; PSMT4 uses the 16 entries at `CSA * 16`.
-4. PS2 alpha (`0x80` = opaque) is doubled and clamped to 0–255.
+4. PS2 alpha (`0x80` = opaque) is doubled and clamped to 0 to 255.
 5. When `CLAMP` is in region mode, `MAXU+1` × `MAXV+1` is the image's own size
    inside the power-of-two texture; the output is cropped to it.
 6. Addresses wrap at 4 MB, as on the GS.
@@ -42,11 +43,34 @@ data.
 
 The native decoder also accepts the 8x2 RGB5A1 palette transfer used by
 4-bit frame fill images such as 4R_A. It expands the standalone 16 entries
-directly (CSM1, CSA zero); arbitrary 16-bit textures/palette layouts are still
-unsupported. A synthetic two-color fixture checks opaque/transparent colors
-and rejects every truncated input. CLUT format reference:
+directly (CSM1, CSA zero); such a transfer is read from the file and is not
+written into video memory, where it would cover the image it belongs to.
+CLUT format reference:
 https://github.com/PCSX2/pcsx2/blob/master/pcsx2/GS/GSClut.cpp
 No reference implementation code was copied.
+
+### PSMCT16 and PSMCT16S (2026-10-18)
+
+16-bit images (RGB5A1: five bits per channel, doubled, top bit = alpha `0x80`)
+store 16x8 pixels to a 256-byte block, two rows to a 32-byte line. Each 32-bit
+unit holds the pixels x and x+8 of one of the block's columns, so the 32-bit
+column table gives the unit and its lowest bit the half. PSMCT16 uses the same
+block order as PSMT4; PSMCT16S has its own order (third block of a page is 16,
+where PSMCT16 has 8). Layout reference:
+https://gist.github.com/TellowKrinkle/c05b2a50c4f272da0a03538950d86a1c
+No reference implementation code was copied.
+tex1_formats_test checks the 16-bit layout through a 32-bit read of the same
+memory, the PSMCT16S block order, 16-bit mip levels, and the isolation below.
+
+### Per-image isolation (2026-10-18)
+
+A texture in a format the decoder does not take (`PSMT8H`, `PSMT4HL`,
+`PSMT4HH`, an unknown value), an image whose palette transfer is missing, or a
+transfer in a format it cannot write (PSMCT24) now leaves that image blank and
+goes on with the next one, where a single such image used to drop the whole
+file. Each format is named once in the log with the size it was used at.
+Truncated files, bad offsets and descriptors past the 1024 size limit are
+still refused outright.
 
 
 The decoded image also retains CLAMP U/V modes and 10-bit MIN/MAX values for

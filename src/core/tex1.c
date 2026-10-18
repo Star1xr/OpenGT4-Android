@@ -11,12 +11,13 @@
  */
 #include "tex1.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define VRAM_SIZE (4u * 1024 * 1024)
 
-enum { PSMCT32 = 0x00, PSMCT24 = 0x01, PSMT8 = 0x13, PSMT4 = 0x14 };
+enum { PSMCT32 = 0x00, PSMCT24 = 0x01, PSMCT16 = 0x02, PSMCT16S = 0x0a, PSMT8 = 0x13, PSMT4 = 0x14 };
 
 static const uint8_t blk32[4][8] = {
     { 0, 1, 4, 5, 16, 17, 20, 21 }, { 2, 3, 6, 7, 18, 19, 22, 23 },
@@ -43,9 +44,15 @@ static const uint8_t col8[16][16] = {
     { 232, 236, 248, 252, 200, 204, 216, 220, 234, 238, 250, 254, 202, 206, 218, 222 },
     { 193, 197, 209, 213, 225, 229, 241, 245, 195, 199, 211, 215, 227, 231, 243, 247 },
     { 201, 205, 217, 221, 233, 237, 249, 253, 203, 207, 219, 223, 235, 239, 251, 255 } };
+/* Blocks in a page for the layouts with 32 blocks in 4 columns and 8 rows:
+   PSMT4 and PSMCT16 (see docs/TEX1_FORMAT.md). */
 static const uint8_t blk4[8][4] = {
     { 0, 2, 8, 10 }, { 1, 3, 9, 11 }, { 4, 6, 12, 14 }, { 5, 7, 13, 15 },
     { 16, 18, 24, 26 }, { 17, 19, 25, 27 }, { 20, 22, 28, 30 }, { 21, 23, 29, 31 } };
+/* PSMCT16S holds the same blocks in a different order. */
+static const uint8_t blk16s[8][4] = {
+    { 0, 2, 16, 18 }, { 1, 3, 17, 19 }, { 8, 10, 24, 26 }, { 9, 11, 25, 27 },
+    { 4, 6, 20, 22 }, { 5, 7, 21, 23 }, { 12, 14, 28, 30 }, { 13, 15, 29, 31 } };
 /* PSMT4 in-block nibble order for rows 0-7; rows 8-15 are the same plus 256. */
 static const uint16_t col4[8][32] = {
     { 0, 8, 32, 40, 64, 72, 96, 104, 2, 10, 34, 42, 66, 74, 98, 106, 4, 12, 36, 44, 68, 76, 100, 108, 6, 14, 38, 46, 70, 78, 102, 110 },
@@ -86,6 +93,68 @@ static uint32_t le32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | 
 static uint16_t le16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 static uint64_t le64(const uint8_t *p) { return le32(p) | (uint64_t)le32(p + 4) << 32; }
 
+/* PSMCT16: a 256-byte block holds 16x8 pixels, two rows to a 32-byte line.
+   Every 32-bit unit holds the pixels of one column's two halves (x and x+8),
+   so the 32-bit column table gives the unit and its lowest bit the half.
+   PSMCT16S is the same layout with the page's blocks in another order. */
+static uint32_t addr16(uint32_t tbp, uint32_t bw, uint32_t x, uint32_t y, int cts)
+{
+    uint32_t page = (y / 64) * bw + x / 64;
+    const uint8_t *row = cts ? blk16s[(y % 64) / 8] : blk4[(y % 64) / 8];
+    uint32_t blk = tbp + page * 32 + row[(x % 64) / 16];
+    uint32_t half = col32[y % 8][x % 8] * 2 + (x % 16) / 8;
+    return (blk * 256 + half * 2) & (VRAM_SIZE - 1);
+}
+
+/* Formats the textures can be read back in. PSMT8H, PSMT4HL and PSMT4HH write
+   into parts of a 32-bit unit and are not read here. */
+static int readable(uint32_t psm)
+{
+    return psm == PSMCT32 || psm == PSMCT24 || psm == PSMCT16 || psm == PSMCT16S ||
+           psm == PSMT8 || psm == PSMT4;
+}
+
+/* Formats a transfer can be written into video memory with. PSMCT24 is not
+   one of them: the disc's 24-bit images come from a 32-bit buffer read as
+   PSMCT24, which is why PSMCT24 is readable and not writable. */
+static int writable(uint32_t psm)
+{
+    return psm == PSMCT32 || psm == PSMCT16 || psm == PSMCT16S || psm == PSMT8 || psm == PSMT4;
+}
+
+enum { RPT_TRANSFER, RPT_TEXTURE, RPT_PALETTE, RPT_PALETTE_DATA, RPT_MIP };
+
+/* Each format this decoder cannot take is named once, with the size it was
+   used at: one image used to drop the whole file, so the log has to say which
+   one it was. */
+static void report_once(unsigned kind, unsigned a, unsigned b, unsigned c)
+{
+    static struct { unsigned kind, a, b, c; } seen[16];
+    static int count;
+    for (int i = 0; i < count; i++)
+        if (seen[i].kind == kind && seen[i].a == a && seen[i].b == b && seen[i].c == c) return;
+    if (count < (int)(sizeof seen / sizeof seen[0])) {
+        seen[count].kind = kind; seen[count].a = a; seen[count].b = b; seen[count].c = c; count++;
+    }
+    switch (kind) {
+    case RPT_TRANSFER:
+        fprintf(stderr, "tex1: transfer format 0x%x at %ux%u not written, left out of video memory\n", a, b, c);
+        break;
+    case RPT_TEXTURE:
+        fprintf(stderr, "tex1: texture format 0x%x at %ux%u not decoded, image left blank\n", a, b, c);
+        break;
+    case RPT_PALETTE:
+        fprintf(stderr, "tex1: palette format 0x%x at %ux%u not decoded, image left blank\n", a, b, c);
+        break;
+    case RPT_PALETTE_DATA:
+        fprintf(stderr, "tex1: palette at 0x%x has no 8x2 transfer, image left blank\n", a);
+        break;
+    case RPT_MIP:
+        fprintf(stderr, "tex1: mip format 0x%x at %ux%u not decoded, levels dropped\n", a, b, c);
+        break;
+    }
+}
+
 static int upload(uint8_t *vram, const uint8_t *src, size_t avail, uint32_t tbp, uint32_t bw,
                   int psm, uint32_t w, uint32_t h)
 {
@@ -94,6 +163,14 @@ static int upload(uint8_t *vram, const uint8_t *src, size_t avail, uint32_t tbp,
         for (uint32_t y = 0; y < h; y++)
             for (uint32_t x = 0; x < w; x++)
                 memcpy(vram + addr32(tbp, bw, x, y), src + ((size_t)y * w + x) * 4, 4);
+    } else if (psm == PSMCT16 || psm == PSMCT16S) {
+        if ((uint64_t)w * h * 2 > avail) return 0;
+        for (uint32_t y = 0; y < h; y++)
+            for (uint32_t x = 0; x < w; x++) {
+                const uint8_t *s = src + ((size_t)y * w + x) * 2;
+                uint32_t a = addr16(tbp, bw, x, y, psm == PSMCT16S);
+                vram[a] = s[0]; vram[a + 1] = s[1];
+            }
     } else if (psm == PSMT8) {
         if ((uint64_t)w * h > avail) return 0;
         for (uint32_t y = 0; y < h; y++)
@@ -112,6 +189,19 @@ static int upload(uint8_t *vram, const uint8_t *src, size_t avail, uint32_t tbp,
         return 0;
     }
     return 1;
+}
+
+/* PSMCT16 is RGB5A1: five bits per colour, doubled, and the top bit is the
+   GS alpha 0x80 (the same expansion as the 16-entry palettes). */
+static void rgb5a1(uint16_t c, uint8_t out[4], uint8_t *native_alpha)
+{
+    for (unsigned k = 0; k < 3; k++) {
+        unsigned v = (c >> (k * 5)) & 31;
+        out[k] = (uint8_t)((v << 3) | (v >> 2));
+    }
+    unsigned a = c & 0x8000 ? 128u : 0u;
+    out[3] = (uint8_t)(a ? 255 : 0);
+    if (native_alpha) *native_alpha = (uint8_t)a;
 }
 
 /* Palette entry i (0..255) of a 32-bit CLUT stored at cbp with the default
@@ -140,9 +230,13 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
     for (unsigned i = 0; i < ntr; i++) {
         const uint8_t *t = d + ptr + 12 * i;
         uint32_t p = le32(t), tbp = le16(t + 4), bw = t[6], psm = t[7], w = le16(t + 8), h = le16(t + 10);
-        /* Tiny frame fills store a standalone 16-entry RGB5A1 palette.
-           It is consumed directly below; other 16-bit transfers remain unsupported. */
-        if (psm == 2 && w == 8 && h == 2 && p <= size && size - p >= 32) continue;
+        /* Tiny frame fills store a standalone 16-entry RGB5A1 palette. It is
+           read straight out of the file below and is left out of video memory,
+           where it would write over the image it belongs to. */
+        if (psm == PSMCT16 && w == 8 && h == 2 && p <= size && size - p >= 32) continue;
+        /* A transfer this decoder cannot write leaves that part of video
+           memory as it was: the images that do not read it still draw. */
+        if (!writable(psm)) { report_once(RPT_TRANSFER, psm, w, h); continue; }
         if (p >= size || !upload(vram, d + p, size - p, tbp, bw, (int)psm, w, h)) goto fail;
     }
 
@@ -159,8 +253,7 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
             if (maxu < tw) w = maxu + 1;
             if (maxv < th) h = maxv + 1;
         }
-        if (tw > 1024 || th > 1024)
-            goto fail;
+        if (tw > 1024 || th > 1024) goto fail;
         imgs[i].width = (int)w; imgs[i].height = (int)h;
         imgs[i].tex_w = (int)tw; imgs[i].tex_h = (int)th;
         imgs[i].wrap_u=(uint8_t)(clamp&3);imgs[i].wrap_v=(uint8_t)((clamp>>2)&3);
@@ -169,9 +262,13 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
         imgs[i].color_component=(uint8_t)((tex0>>34)&1);
         imgs[i].texture_function=(uint8_t)((tex0>>35)&3);
         {uint64_t tex1 = le64(t + 8); imgs[i].magnify=(uint8_t)((tex1>>5)&1); imgs[i].minify=(uint8_t)((tex1>>6)&7);}
-        imgs[i].native_alpha=malloc((size_t)w*h);
-        imgs[i].rgba = malloc((size_t)w * h * 4);
+        imgs[i].native_alpha=calloc((size_t)w*h,1);
+        imgs[i].rgba = calloc((size_t)w * h, 4);
         if (!imgs[i].rgba || !imgs[i].native_alpha) goto fail;
+        /* A format this decoder cannot read leaves this image in the list,
+           blank, and goes on with the next one: one image used to drop the
+           whole file with it. */
+        if (!readable(psm)) { report_once(RPT_TEXTURE, psm, tw, th); continue; }
         uint8_t pal[256][4],palalpha[256];
         unsigned cpsm = (unsigned)((tex0 >> 51) & 15);
         if (cpsm == 2 && psm == PSMT4 && csa == 0 && !((tex0 >> 55) & 1)) {
@@ -179,19 +276,13 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
             for (unsigned j = 0; j < ntr; j++) {
                 const uint8_t *tr = d + ptr + 12 * j;
                 uint32_t off = le32(tr);
-                if (tr[7] == 2 && le16(tr + 4) == cbp && le16(tr + 8) == 8 && le16(tr + 10) == 2 &&
+                if (tr[7] == PSMCT16 && le16(tr + 4) == cbp && le16(tr + 8) == 8 && le16(tr + 10) == 2 &&
                     off <= size && size - off >= 32) palette = d + off;
             }
-            if (!palette) goto fail;
-            for (unsigned k = 0; k < 16; k++) {
-                unsigned rgb = le16(palette + k * 2);
-                for (unsigned c = 0; c < 3; c++) {
-                    unsigned v = (rgb >> (c * 5)) & 31;
-                    pal[k][c] = (uint8_t)((v << 3) | (v >> 2));
-                }
-                pal[k][3] = rgb & 0x8000 ? 255 : 0;palalpha[k]=rgb&0x8000?128:0;
-            }
-        } else if (cpsm != 0) goto fail;
+            if (!palette) { report_once(RPT_PALETTE_DATA, cbp, tw, th); continue; }
+            for (unsigned k = 0; k < 16; k++)
+                rgb5a1(le16(palette + k * 2), pal[k], &palalpha[k]);
+        } else if (cpsm != 0) { report_once(RPT_PALETTE, cpsm, tw, th); continue; }
         else if (psm == PSMT8)
             for (unsigned k = 0; k < 256; k++) clut(vram, cbp, k, pal[k], &palalpha[k]);
         else if (psm == PSMT4)
@@ -217,8 +308,9 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
                     imgs[i].native_alpha[y*w+x]=0x80;
                     o[0] = p[0]; o[1] = p[1]; o[2] = p[2];
                     o[3] = 255;
-                } else {
-                    goto fail;
+                } else if (psm == PSMCT16 || psm == PSMCT16S) {
+                    const uint8_t *p = vram + addr16(tbp, tbw, x, y, psm == PSMCT16S);
+                    rgb5a1((uint16_t)(p[0] | p[1] << 8), o, &imgs[i].native_alpha[y*w+x]);
                 }
             }
         /* Tex1 descriptor +08 TEX1.MXL, +10/+18 MIPTBP1/2: use the
@@ -243,7 +335,16 @@ int tex1_decode(const uint8_t *d, size_t size, tex1_image **out)
                     memcpy(pixel,pal[index],3);pixel[3]=palalpha[index];
                 } else if(psm==PSMCT32 || psm==PSMCT24) {
                     memcpy(pixel,vram+addr32(bp,bw,x,y),4);if(psm==PSMCT24)pixel[3]=128;
-                } else goto fail;
+                } else if(psm==PSMCT16 || psm==PSMCT16S) {
+                    /* A mip level carries the GS alpha, which is what the
+                       PSMCT32 branch copies above. */
+                    const uint8_t *p=vram+addr16(bp,bw,x,y,psm==PSMCT16S);
+                    rgb5a1((uint16_t)(p[0]|p[1]<<8),pixel,NULL);
+                    pixel[3]=(uint8_t)(p[1]&0x80?128:0);
+                } else {
+                    /* No branch for this format: its levels are dropped. */
+                    report_once(RPT_MIP,psm,mw,mh);imgs[i].mip_count=0;
+                }
             }
         }
     }
