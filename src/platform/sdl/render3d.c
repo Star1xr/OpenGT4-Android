@@ -5,6 +5,9 @@
 #include "render3d_frustum.h"
 #include "wheel_motion.h"
 
+/* The desktop gl.h used to pull SDL in with SDL_opengl.h; the GLES form
+   does not, and SDL_GL_ExtensionSupported is the only SDL call here. */
+#include <SDL.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

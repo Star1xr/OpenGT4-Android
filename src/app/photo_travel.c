@@ -120,7 +120,22 @@ static int save_image(photo_travel *p)
     /* P: lossless PC PNG at the captured viewport resolution, no widgets.
        Readback only when saving; live view and frozen preview stay on GPU. */
     video_flush2d();glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,video_texture_id(p->image));
-    glPixelStorei(GL_PACK_ALIGNMENT,1);glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,rgba);
+    glPixelStorei(GL_PACK_ALIGNMENT,1);
+#ifdef OPENGT4_GLES
+    /* GLES has no glGetTexImage. The grabbed frame is RGBA8, so attach it
+       to a one-shot framebuffer and read that; same rows, same flip below. */
+    {
+        GLint previous;GLuint fbo;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING,&previous);glGenFramebuffers(1,&fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER,fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,video_texture_id(p->image),0);
+        if(glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE)
+            glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,rgba);
+        glBindFramebuffer(GL_FRAMEBUFFER,previous);glDeleteFramebuffers(1,&fbo);
+    }
+#else
+    glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,rgba);
+#endif
     for(int y=0;y<h/2;y++)for(size_t x=0;x<(size_t)w*4;x++) {
         uint8_t *a=rgba+(size_t)y*w*4+x,*b=rgba+(size_t)(h-1-y)*w*4+x,t=*a;*a=*b;*b=t;
     }
