@@ -220,10 +220,12 @@ static float sd_arrow(float x, float y, int quarter_turns)
     return poly_distance(pts, 3, x, y);
 }
 
+/* Quarter turns run the apex through right, down and left (rows grow down,
+   so the first turn takes it to +x). */
 static float sd_arrow_up(float x, float y)    { return sd_arrow(x, y, 0); }
 static float sd_arrow_down(float x, float y)  { return sd_arrow(x, y, 2); }
-static float sd_arrow_left(float x, float y)  { return sd_arrow(x, y, 1); }
-static float sd_arrow_right(float x, float y) { return sd_arrow(x, y, 3); }
+static float sd_arrow_left(float x, float y)  { return sd_arrow(x, y, 3); }
+static float sd_arrow_right(float x, float y) { return sd_arrow(x, y, 1); }
 
 static void paint(uint8_t *img, const atlas_cell *cell, float (*sd)(float, float))
 {
